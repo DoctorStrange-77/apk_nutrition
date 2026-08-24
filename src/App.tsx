@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BottomNav } from '@/components/BottomNav';
+import { SmartDayCard } from '@/components/SmartDayCard';
+import { CompletionPlanCard } from '@/components/CompletionPlanCard';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
 import { FoodPickerModal } from '@/components/FoodPickerModal';
 import { FoodLibrarySearchModal } from '@/components/FoodLibrarySearchModal';
@@ -108,6 +110,7 @@ export function App() {
   const kcal = kcalFromMacros(target);
   const mealTargets = activeTiming ? calculateMealTargets(target, activeTiming) : [];
   const manualActual = useMemo(() => macrosForManualDay(manualMeals), [manualMeals]);
+  const hasManualEntries = useMemo(() => manualMeals.some((meal) => meal.items.length > 0), [manualMeals]);
   const completionContext = useMemo(() => activeTiming ? buildSmartCompletionContext(target, activeTiming, manualMeals) : null, [target, activeTiming, manualMeals]);
   const filteredFoods = useMemo(() => {
     const query = foodSearch.trim().toLowerCase();
@@ -467,6 +470,21 @@ export function App() {
           </div>
         </section>
 
+        <SmartDayCard
+          target={target}
+          consumed={manualActual}
+          residual={completionContext?.residualTarget || target}
+          hasEntries={hasManualEntries}
+          onComplete={() => completeManualDay(false)}
+          onOpenDiary={() => setMenuMode('manual')}
+        />
+        <CompletionPlanCard
+          plan={completionPlan}
+          onApply={applySmartCompletion}
+          onRegenerate={() => completeManualDay(true)}
+          onDiscard={() => setCompletionPlan(null)}
+        />
+
         {menuMode === 'automatic' && <>
           <section className="card">
             <div className="row-between"><h2>Pool alimenti</h2><button className="ghost" onClick={() => { setFoodSearch(''); setShowPoolSearch(true); }}>Scegli</button></div>
@@ -495,17 +513,8 @@ export function App() {
               <div><small>Grassi</small><strong>{manualActual.fat.toFixed(1)} / {target.fat.toFixed(0)} g</strong></div>
               <div><small>Calorie</small><strong>{kcalFromMacros(manualActual).toFixed(0)} / {kcal.toFixed(0)}</strong></div>
             </div>
-            {completionContext && <div className="smart-residual"><div><p className="eyebrow red">SMART COMPLETION</p><strong>Macro ancora da coprire</strong></div><span>{completionContext.residualTarget.carbs.toFixed(1)}C · {completionContext.residualTarget.protein.toFixed(1)}P · {completionContext.residualTarget.fat.toFixed(1)}F</span></div>}
-            <div className="button-group manual-actions"><button className="primary smart-complete-button" onClick={() => completeManualDay(false)}>Completa giornata</button><button className="secondary" onClick={saveManualDay}>Salva</button><button className="danger" onClick={clearManualDay}>Azzera</button></div>
+            <div className="button-group manual-actions"><button className="secondary" onClick={saveManualDay}>Salva giornata</button><button className="danger" onClick={clearManualDay}>Azzera</button></div>
           </section>
-
-          {completionPlan && <section className="card completion-plan-card">
-            <div className="row-between"><div><p className="eyebrow red">PIANO AUTOMATICO</p><h2>Completa la giornata</h2></div><span className={`completion-status ${completionPlan.status}`}>{completionPlan.status}</span></div>
-            <p className="muted">Il motore ha generato solo i macro mancanti partendo dal target originale e dal timing attivo. Gli alimenti gia inseriti non vengono toccati.</p>
-            <div className="result-summary"><span>Residuo target {completionPlan.target.carbs.toFixed(1)}C / {completionPlan.target.protein.toFixed(1)}P / {completionPlan.target.fat.toFixed(1)}F</span><span>Generato {completionPlan.actual.carbs.toFixed(1)}C / {completionPlan.actual.protein.toFixed(1)}P / {completionPlan.actual.fat.toFixed(1)}F</span></div>
-            <div className="completion-meals">{completionPlan.meals.map((meal, index) => meal.foods.length ? <article key={`completion-${index}`}><strong>{meal.name}</strong>{meal.foods.map((portion) => <div className="food-line" key={`${meal.name}-${portion.foodId}`}><span>{portion.name}</span><b>{portion.grams} g</b></div>)}</article> : null)}</div>
-            <div className="completion-actions"><button className="primary" onClick={applySmartCompletion}>Applica al diario</button><button className="secondary" onClick={() => completeManualDay(true)}>Rigenera</button><button className="ghost" onClick={() => setCompletionPlan(null)}>Scarta</button></div>
-          </section>}
 
           {manualMeals.map((meal, mealIndex) => {
             const actual = macrosForManualMeal(meal);
