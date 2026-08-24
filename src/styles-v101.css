@@ -1,0 +1,40 @@
+.bottom-nav-inner{grid-template-columns:repeat(7,minmax(0,1fr));}
+.bottom-nav-item{min-height:62px;padding:6px 2px;}
+.bottom-nav-label{font-size:.66rem;}
+.profile-hero{border-color:rgba(239,47,60,.24);background:linear-gradient(145deg,rgba(54,8,13,.58),rgba(15,16,19,.97) 48%,rgba(8,9,11,.99));}
+.profile-badge{padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);font-size:.66rem;font-weight:900;letter-spacing:.08em;}
+.profile-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px;}
+.profile-form-grid label{display:grid;gap:6px;color:#8d8f95;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.045em;}
+.profile-form-grid label small{font-size:.6rem;color:#666a72;}
+.profile-form-grid input{width:100%;min-height:46px;border-radius:13px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#fff;padding:0 12px;}
+.profile-segment,.profile-goal-grid,.profile-activity-grid{display:grid;gap:8px;margin-top:14px;}
+.profile-segment.two{grid-template-columns:repeat(2,1fr);}
+.profile-goal-grid{grid-template-columns:repeat(3,1fr);}
+.profile-activity-grid{grid-template-columns:repeat(5,1fr);}
+.profile-segment button,.profile-goal-grid button,.profile-activity-grid button{min-height:44px;border-radius:13px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);color:#aaa;font-weight:800;}
+.profile-segment button.active,.profile-goal-grid button.active,.profile-activity-grid button.active{color:#fff;border-color:rgba(255,55,66,.42);background:linear-gradient(145deg,rgba(201,19,30,.38),rgba(100,8,15,.32));}
+.profile-segment button small,.profile-activity-grid button small{display:block;margin-top:3px;color:#777;font-size:.62rem;}
+.profile-activity-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;color:#9a9ca2;font-size:.75rem;font-weight:800;}
+.profile-adjustment{display:grid;gap:10px;margin-top:14px;padding:12px;border:1px solid rgba(255,255,255,.07);border-radius:15px;background:rgba(0,0,0,.16);}
+.profile-adjustment-presets{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.profile-adjustment-presets button{min-height:40px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);color:#aaa;font-weight:850;}
+.profile-adjustment-presets button.active{color:#fff;border-color:rgba(255,55,66,.4);background:rgba(179,15,25,.32);}
+.profile-adjustment label{display:grid;grid-template-columns:1fr 90px auto;align-items:center;gap:8px;color:#8d8f95;font-size:.72rem;font-weight:800;}
+.profile-adjustment input{min-height:42px;border-radius:11px;border:1px solid rgba(255,255,255,.1);background:#0d0e10;color:#fff;padding:0 10px;}
+.profile-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px;}
+.profile-kpi-grid>div{display:grid;gap:4px;padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);}
+.profile-kpi-grid small,.profile-target-compare small{color:#777b83;font-size:.62rem;font-weight:900;letter-spacing:.06em;}
+.profile-kpi-grid strong{font-size:1rem;}.profile-kpi-grid span{color:#8d8f95;font-size:.68rem;}
+.profile-target-compare{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;margin-top:14px;}
+.profile-target-compare>div{display:grid;gap:5px;padding:13px;border-radius:14px;border:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.18);}
+.profile-target-compare>div:last-child{border-color:rgba(239,47,60,.24);background:rgba(113,8,15,.16);}
+.profile-target-compare span{color:#8d8f95;font-size:.7rem;}.profile-errors{display:grid;gap:6px;margin-top:12px;color:#ff9399;font-size:.78rem;}
+.profile-apply{width:100%;margin-top:14px;min-height:50px;}.profile-message{margin-top:12px;}
+.profile-disclaimer,.profile-empty{margin-top:12px;color:#777b83;font-size:.72rem;line-height:1.5;}
+@media(max-width:720px){
+  .bottom-nav-label{font-size:.58rem;letter-spacing:-.01em}.bottom-nav-icon svg{width:22px;height:22px}.bottom-nav-item{min-height:60px}
+  .profile-form-grid{grid-template-columns:1fr}.profile-activity-grid{grid-template-columns:repeat(2,1fr)}
+  .profile-kpi-grid{grid-template-columns:repeat(2,1fr)}.profile-target-compare{grid-template-columns:1fr}.profile-target-compare>b{text-align:center;transform:rotate(90deg)}
+  .profile-activity-head{align-items:flex-start;flex-direction:column}.profile-goal-grid{grid-template-columns:1fr}
+}
+@media(max-width:430px){.bottom-nav{width:calc(100% - 8px);padding:4px}.bottom-nav-inner{gap:2px}.bottom-nav-label{font-size:.54rem}.bottom-nav-item{padding:4px 1px;border-radius:14px}}

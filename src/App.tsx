@@ -11,6 +11,7 @@ import { SavedMealModal } from '@/components/SavedMealModal';
 import { ChoicePopup } from '@/components/ChoicePopup';
 import { WeeklyPlannerPanel } from '@/components/WeeklyPlannerPanel';
 import { ProgressPanel } from '@/components/ProgressPanel';
+import { ProfilePanel } from '@/components/ProfilePanel';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
 import { FoodPickerModal } from '@/components/FoodPickerModal';
 import { FoodLibrarySearchModal } from '@/components/FoodLibrarySearchModal';
@@ -47,7 +48,7 @@ import type {
   WeeklyPlanResult,
 } from '@/types/nutrition';
 
-type Tab = 'menu' | 'week' | 'progress' | 'timing' | 'foods' | 'saved';
+type Tab = 'menu' | 'week' | 'progress' | 'profile' | 'timing' | 'foods' | 'saved';
 type MenuMode = 'automatic' | 'manual';
 type DateModalMode = 'navigate' | 'copy-day' | 'copy-meal';
 
@@ -709,7 +710,7 @@ export function App() {
       <header className="hero">
         <div>
           <p className="eyebrow">BUILDER NUTRITION</p>
-          <h1>{tab === 'menu' ? 'Oggi' : tab === 'week' ? 'Settimana' : tab === 'progress' ? 'Progressi' : 'Nutrition Engine V2'}</h1>
+          <h1>{tab === 'menu' ? 'Oggi' : tab === 'week' ? 'Settimana' : tab === 'progress' ? 'Progressi' : tab === 'profile' ? 'Profilo' : 'Nutrition Engine V2'}</h1>
           <p className="muted">Macro + timing + generazione automatica. Diario locale, nessun login.</p>
         </div>
         <div className="kcal-badge">{kcal.toFixed(0)}<small>kcal</small></div>
@@ -831,6 +832,8 @@ export function App() {
           setStatus(`Target aggiornato: ${nextTarget.carbs}C / ${nextTarget.protein}P / ${nextTarget.fat}F.`);
         }}
       />}
+
+      {tab === 'profile' && <ProfilePanel currentTarget={target} onApplyTarget={(nextTarget) => { setTarget({ ...nextTarget }); setStatus(`Target profilo applicato: ${nextTarget.carbs.toFixed(0)}C / ${nextTarget.protein.toFixed(0)}P / ${nextTarget.fat.toFixed(0)}F.`); }} />}
 
       {tab === 'timing' && <section className="card">
         <div className="row-between"><h2>Gestione timing</h2><button className="primary small" onClick={() => setEditingTiming(createEmptyTiming('Nuovo timing', 5))}>Nuovo</button></div>

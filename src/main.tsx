@@ -7,6 +7,7 @@ import './styles-v07-calendar.css';
 import './styles-v08.css';
 import './styles-v09.css';
 import './styles-v10.css';
+import './styles-v101.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
