@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { BottomNav } from '@/components/BottomNav';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
 import { FoodPickerModal } from '@/components/FoodPickerModal';
+import { FoodLibrarySearchModal } from '@/components/FoodLibrarySearchModal';
+import { TimingSelectModal } from '@/components/TimingSelectModal';
 import { NewFoodModal } from '@/components/NewFoodModal';
 import { TimingEditorModal } from '@/components/TimingEditorModal';
 import { BUILDER_FOODS } from '@/data/builderFoods';
@@ -88,6 +90,9 @@ export function App() {
   const [manualPickerMealId, setManualPickerMealId] = useState<string | null>(null);
   const [manualPickerSearch, setManualPickerSearch] = useState('');
   const [showNewFood, setShowNewFood] = useState(false);
+  const [showFoodSearch, setShowFoodSearch] = useState(false);
+  const [showPoolSearch, setShowPoolSearch] = useState(false);
+  const [showTimingSelect, setShowTimingSelect] = useState(false);
   const [manualFood, setManualFood] = useState({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
 
   const timings = useMemo(() => [...BUILT_IN_TIMINGS, ...customTimings], [customTimings]);
@@ -389,9 +394,9 @@ export function App() {
 
         <section className="card">
           <div className="row-between"><h2>Timing</h2><button className="ghost" onClick={() => setTab('timing')}>Gestisci</button></div>
-          <select value={activeTimingId} onChange={(e) => setActiveTimingId(e.target.value)}>
-            {timings.map((timing) => <option key={timing.id} value={timing.id}>{timing.name}</option>)}
-          </select>
+          <button className="selector-card" onClick={() => setShowTimingSelect(true)}>
+            <span><small>Timing attivo</small><strong>{activeTiming.name}</strong><em>{activeTiming.meals.length} pasti</em></span><b>›</b>
+          </button>
           <div className="meal-targets">
             {mealTargets.map((meal, index) => <div className="target-chip" key={`${activeTimingId}-${index}`}><strong>{meal.name}</strong><span>{meal.carbs.toFixed(0)}C · {meal.protein.toFixed(0)}P · {meal.fat.toFixed(0)}F</span></div>)}
           </div>
@@ -399,7 +404,7 @@ export function App() {
 
         {menuMode === 'automatic' && <>
           <section className="card">
-            <div className="row-between"><h2>Pool alimenti</h2><button className="ghost" onClick={() => setTab('foods')}>Scegli</button></div>
+            <div className="row-between"><h2>Pool alimenti</h2><button className="ghost" onClick={() => { setFoodSearch(''); setShowPoolSearch(true); }}>Scegli</button></div>
             <p className="muted">{selectedFoodIds.length ? `${selectedFoodIds.length} alimenti selezionati: il motore usera solo questi.` : `Pool completo: ${foods.length} alimenti disponibili.`}</p>
             {selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Usa tutto il database</button>}
           </section>
@@ -458,10 +463,9 @@ export function App() {
 
       {tab === 'foods' && <>
         <section className="card">
-          <div className="row-between foods-heading"><div><p className="eyebrow red">LIBRERIA</p><h2>Database alimenti</h2></div><div className="button-group"><button className="secondary" onClick={() => setShowNewFood(true)}>+ Nuovo</button><button className="primary" onClick={() => void scanBarcode()}>Scansiona</button></div></div>
-          <input className="search" placeholder="Cerca alimento, marca o barcode..." value={foodSearch} onChange={(e) => setFoodSearch(e.target.value)} />
-          <div className="food-toolbar"><span>{selectedFoodIds.length} selezionati</span>{selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Deseleziona tutti</button>}</div>
-          <div className="food-list">{filteredFoods.slice(0, 160).map((food) => <div className="food-choice" key={food.id}><input type="checkbox" checked={selectedFoodIds.includes(food.id)} onChange={() => setSelectedFoodIds((current) => current.includes(food.id) ? current.filter((id) => id !== food.id) : [...current, food.id])} /><button className="food-open" onClick={() => setEditingFood(structuredClone(food))}><span><strong>{food.name}</strong><small>{foodMacros(food)} · {food.source}{food.brand ? ` · ${food.brand}` : ''}</small></span><b>›</b></button></div>)}</div>
+          <div className="row-between foods-heading"><div><p className="eyebrow red">LIBRERIA</p><h2>Database alimenti</h2></div><div className="button-group"><button className="secondary" onClick={() => { setFoodSearch(''); setShowFoodSearch(true); }}>Cerca</button><button className="secondary" onClick={() => setShowNewFood(true)}>+ Nuovo</button><button className="primary" onClick={() => void scanBarcode()}>Scansiona</button></div></div>
+          <p className="muted">Tocca Cerca per trovare rapidamente un alimento. Tocca una voce per aprire la scheda.</p>
+          <div className="food-list browse-food-list">{foods.slice(0, 100).map((food) => <button className="food-browser-row" key={food.id} onClick={() => setEditingFood(structuredClone(food))}><span className="food-avatar small">{food.name.slice(0,1).toUpperCase()}</span><span><strong>{food.name}</strong><small>{foodMacros(food)} · {food.source}{food.brand ? ` · ${food.brand}` : ''}</small></span><b>›</b></button>)}</div>
         </section>
 
       </>}
@@ -489,6 +493,9 @@ export function App() {
         onDistribute={distributeEqually}
         onUpdateMeal={updateEditingMeal}
       />
+      <TimingSelectModal open={showTimingSelect} timings={timings} activeId={activeTimingId} onClose={() => setShowTimingSelect(false)} onSelect={setActiveTimingId} />
+      <FoodLibrarySearchModal open={showFoodSearch} title="Cerca alimenti" eyebrow="DATABASE ALIMENTI" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowFoodSearch(false)} onOpenFood={(food) => { setShowFoodSearch(false); setEditingFood(structuredClone(food)); }} />
+      <FoodLibrarySearchModal open={showPoolSearch} title="Seleziona alimenti" eyebrow="POOL AUTOMATICO" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowPoolSearch(false)} onOpenFood={(food) => { setShowPoolSearch(false); setEditingFood(structuredClone(food)); }} selectedIds={selectedFoodIds} onToggleSelected={(id) => setSelectedFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])} />
       <FoodPickerModal
         open={!!manualPickerMealId}
         foods={manualPickerFoods}
