@@ -473,3 +473,48 @@ input:focus,select:focus { border-color:#d32932; box-shadow:0 0 0 3px rgba(211,4
 .choice-row small { color:#8d8f96; }
 .choice-row.active { border-color:#d62a33; background:linear-gradient(145deg,rgba(179,20,29,.34),rgba(24,8,10,.72)); }
 .choice-row b { color:#ff525c; }
+
+/* Smart completion / premium engine controls */
+.smart-residual {
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  margin:14px 0 4px; padding:14px 15px; border-radius:16px;
+  border:1px solid rgba(255,65,75,.22);
+  background:linear-gradient(145deg,rgba(121,10,17,.20),rgba(255,255,255,.025));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+.smart-residual p { margin:0 0 3px; }
+.smart-residual strong { font-size:.9rem; }
+.smart-residual > span { color:#fff; font-weight:850; white-space:nowrap; }
+.smart-complete-button { flex:1; min-width:160px; }
+.completion-plan-card { border-color:rgba(255,58,69,.28); overflow:hidden; }
+.completion-status {
+  padding:6px 9px; border-radius:999px; font-size:.67rem; font-weight:900;
+  letter-spacing:.08em; text-transform:uppercase; border:1px solid rgba(255,255,255,.09);
+}
+.completion-status.exact { color:#8fe5ad; background:rgba(44,145,83,.14); }
+.completion-status.balanced { color:#ffd27c; background:rgba(184,122,17,.14); }
+.completion-status.best_feasible { color:#ff9ca2; background:rgba(181,34,44,.14); }
+.completion-meals { display:grid; gap:9px; margin-top:13px; }
+.completion-meals article {
+  padding:12px 13px; border:1px solid rgba(255,255,255,.07); border-radius:14px;
+  background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(0,0,0,.14));
+}
+.completion-meals article > strong { display:block; margin-bottom:6px; font-size:.82rem; }
+.completion-meals .food-line { padding:5px 0; color:#d6d6d9; }
+.completion-actions { display:grid; grid-template-columns:1.5fr 1fr auto; gap:8px; margin-top:14px; }
+.generated-meal-head { align-items:flex-start; }
+.generated-meal-title { display:grid; gap:4px; }
+.generated-meal-title > span { font-size:.66rem; font-weight:900; letter-spacing:.08em; }
+.meal-regen-button {
+  padding:6px 9px; border-radius:9px; font-size:.7rem; color:#d9d9dc;
+  border-color:rgba(255,255,255,.09); background:rgba(255,255,255,.035);
+}
+@media (max-width:620px) {
+  .smart-residual { align-items:flex-start; flex-direction:column; }
+  .smart-residual > span { white-space:normal; }
+  .completion-actions { grid-template-columns:1fr 1fr; }
+  .completion-actions .ghost { grid-column:1 / -1; }
+  .manual-actions { display:grid; grid-template-columns:1fr 1fr; }
+  .manual-actions .smart-complete-button { grid-column:1 / -1; width:100%; }
+  .meal-regen-button { white-space:nowrap; }
+}

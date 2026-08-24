@@ -10,6 +10,7 @@ import { BUILDER_FOODS } from '@/data/builderFoods';
 import { BUILT_IN_TIMINGS } from '@/data/builtInTimings';
 import { calculateMealTargets, createEmptyTiming, timingTotals, validateTimingTemplate } from '@/domain/timing';
 import { kcalFromMacros, macrosForManualDay, macrosForManualItem, macrosForManualMeal } from '@/domain/manualMenu';
+import { applyCompletionPlan, buildSingleMealTiming, buildSmartCompletionContext, completionNeeded, replaceGeneratedMeal } from '@/domain/smartCompletion';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode } from '@/services/barcodeService';
 import { lookupOpenFoodFacts } from '@/services/openFoodFactsService';
@@ -82,7 +83,9 @@ export function App() {
   const [selectedFoodIds, setSelectedFoodIds] = useState<string[]>([]);
   const [activeTimingId, setActiveTimingId] = useState('omogeneo');
   const [menu, setMenu] = useState<GeneratedMenu | null>(null);
+  const [completionPlan, setCompletionPlan] = useState<GeneratedMenu | null>(null);
   const [attemptSeed, setAttemptSeed] = useState(0);
+  const [completionSeed, setCompletionSeed] = useState(0);
   const [status, setStatus] = useState('');
   const [foodSearch, setFoodSearch] = useState('');
   const [editingTiming, setEditingTiming] = useState<TimingTemplate | null>(null);
@@ -105,6 +108,7 @@ export function App() {
   const kcal = kcalFromMacros(target);
   const mealTargets = activeTiming ? calculateMealTargets(target, activeTiming) : [];
   const manualActual = useMemo(() => macrosForManualDay(manualMeals), [manualMeals]);
+  const completionContext = useMemo(() => activeTiming ? buildSmartCompletionContext(target, activeTiming, manualMeals) : null, [target, activeTiming, manualMeals]);
   const filteredFoods = useMemo(() => {
     const query = foodSearch.trim().toLowerCase();
     return foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.subcategory || ''} ${food.barcode || ''}`.toLowerCase().includes(query));
@@ -142,6 +146,8 @@ export function App() {
     if (!ready || !activeTiming) return;
     setManualMeals((current) => syncMealsToTiming(activeTiming, current));
   }, [ready, activeTimingId, activeTiming?.id]);
+
+  useEffect(() => { setCompletionPlan(null); }, [target, activeTimingId, selectedFoodIds]);
 
   useEffect(() => {
     if (!ready) return;
@@ -181,10 +187,65 @@ export function App() {
     }
   };
 
+  const completeManualDay = (regenerate = false) => {
+    if (!activeTiming || !completionContext) return;
+    if (!completionNeeded(completionContext.residualTarget)) {
+      setCompletionPlan(null);
+      setStatus('Il target giornaliero e gia coperto: non ci sono macro da completare.');
+      return;
+    }
+    try {
+      const nextSeed = regenerate ? completionSeed + 1 : completionSeed;
+      const result = generateNutritionMenu({
+        target: completionContext.residualTarget,
+        timing: completionContext.residualTiming,
+        foods,
+        selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
+        attemptSeed: nextSeed,
+        dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
+      });
+      setCompletionSeed(nextSeed);
+      setCompletionPlan(result);
+      setStatus(result.status === 'best_feasible' ? 'Creato il miglior completamento possibile.' : 'Completamento automatico pronto.');
+    } catch (error) {
+      setStatus(`Completamento non riuscito: ${String(error)}`);
+    }
+  };
+
   const saveCurrentMenu = () => {
     if (!menu) return;
     setSavedMenus((current) => [menu, ...current.filter((entry) => entry.id !== menu.id)].slice(0, 100));
     setStatus('Menu automatico salvato sul dispositivo.');
+  };
+
+  const applySmartCompletion = () => {
+    if (!completionPlan) return;
+    setManualMeals((current) => applyCompletionPlan(current, completionPlan, foods));
+    setCompletionPlan(null);
+    setStatus('Completamento applicato alla giornata manuale.');
+  };
+
+  const regenerateSingleMeal = (mealIndex: number) => {
+    if (!menu || !activeTiming) return;
+    const sourceMeal = menu.meals[mealIndex];
+    if (!sourceMeal) return;
+    try {
+      const singleTiming = buildSingleMealTiming(activeTiming, mealIndex);
+      const nextSeed = attemptSeed + 1;
+      const replacement = generateNutritionMenu({
+        target: sourceMeal.target,
+        timing: singleTiming,
+        foods,
+        selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
+        attemptSeed: nextSeed,
+        dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
+      });
+      setAttemptSeed(nextSeed);
+      setMenu(replaceGeneratedMeal(menu, mealIndex, replacement));
+      setStatus(`Rigenerato solo il pasto: ${sourceMeal.name}. Gli altri pasti sono rimasti invariati.`);
+    } catch (error) {
+      setStatus(`Rigenerazione pasto non riuscita: ${String(error)}`);
+    }
   };
 
   const saveManualDay = () => {
@@ -343,6 +404,7 @@ export function App() {
   };
 
   const addFoodToManualMeal = (mealId: string, food: LocalFood) => {
+    setCompletionPlan(null);
     const grams = Math.max(1, food.grammiMin || 100);
     setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: [...meal.items, { id: `manual-item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, food: structuredClone(food), grams }] } : meal));
     setManualPickerMealId(null);
@@ -350,14 +412,17 @@ export function App() {
   };
 
   const updateManualItemGrams = (mealId: string, itemId: string, grams: number) => {
+    setCompletionPlan(null);
     setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: meal.items.map((item) => item.id === itemId ? { ...item, grams: safeNumber(grams) } : item) } : meal));
   };
 
   const removeManualItem = (mealId: string, itemId: string) => {
+    setCompletionPlan(null);
     setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: meal.items.filter((item) => item.id !== itemId) } : meal));
   };
 
   const clearManualDay = () => {
+    setCompletionPlan(null);
     setManualMeals((current) => current.map((meal) => ({ ...meal, items: [] })));
     setStatus('Giornata manuale azzerata.');
   };
@@ -413,7 +478,7 @@ export function App() {
             <div className="row-between"><div><p className="eyebrow red">{menu.status.toUpperCase()}</p><h2>Menu generato</h2></div><div className="button-group"><button className="secondary" onClick={saveCurrentMenu}>Salva</button><button className="danger" onClick={() => { setMenu(null); setStatus('Menu corrente eliminato.'); }}>Elimina</button></div></div>
             <div className="result-summary"><span>Target {menu.target.carbs.toFixed(1)}C / {menu.target.protein.toFixed(1)}P / {menu.target.fat.toFixed(1)}F</span><span>Reale {menu.actual.carbs.toFixed(1)}C / {menu.actual.protein.toFixed(1)}P / {menu.actual.fat.toFixed(1)}F</span><span>Tolleranza {menu.tolerancePercent}%</span></div>
             {menu.meals.map((meal, index) => <article className="generated-meal" key={`${menu.id}-${index}`}>
-              <div className="row-between"><strong>{meal.name}</strong><span className={meal.withinTolerance ? 'ok' : 'warn'}>{meal.workoutTiming !== 'none' ? meal.workoutTiming.toUpperCase() : ''}</span></div>
+              <div className="row-between generated-meal-head"><div className="generated-meal-title"><strong>{meal.name}</strong><span className={meal.withinTolerance ? 'ok' : 'warn'}>{meal.workoutTiming !== 'none' ? meal.workoutTiming.toUpperCase() : ''}</span></div><button className="meal-regen-button" onClick={() => regenerateSingleMeal(index)}>Rigenera pasto</button></div>
               <small>Target {meal.target.carbs.toFixed(1)}C · {meal.target.protein.toFixed(1)}P · {meal.target.fat.toFixed(1)}F</small>
               {meal.foods.map((portion) => <button className="food-line food-link" key={`${meal.name}-${portion.foodId}`} onClick={() => { const food = foods.find((item) => item.id === portion.foodId); if (food) setEditingFood(structuredClone(food)); }}><span>{portion.name}</span><strong>{portion.grams} g</strong></button>)}
               <small>Reale {meal.actual.carbs.toFixed(1)}C · {meal.actual.protein.toFixed(1)}P · {meal.actual.fat.toFixed(1)}F</small>
@@ -430,8 +495,17 @@ export function App() {
               <div><small>Grassi</small><strong>{manualActual.fat.toFixed(1)} / {target.fat.toFixed(0)} g</strong></div>
               <div><small>Calorie</small><strong>{kcalFromMacros(manualActual).toFixed(0)} / {kcal.toFixed(0)}</strong></div>
             </div>
-            <div className="button-group manual-actions"><button className="primary" onClick={saveManualDay}>Salva giornata</button><button className="danger" onClick={clearManualDay}>Azzera</button></div>
+            {completionContext && <div className="smart-residual"><div><p className="eyebrow red">SMART COMPLETION</p><strong>Macro ancora da coprire</strong></div><span>{completionContext.residualTarget.carbs.toFixed(1)}C · {completionContext.residualTarget.protein.toFixed(1)}P · {completionContext.residualTarget.fat.toFixed(1)}F</span></div>}
+            <div className="button-group manual-actions"><button className="primary smart-complete-button" onClick={() => completeManualDay(false)}>Completa giornata</button><button className="secondary" onClick={saveManualDay}>Salva</button><button className="danger" onClick={clearManualDay}>Azzera</button></div>
           </section>
+
+          {completionPlan && <section className="card completion-plan-card">
+            <div className="row-between"><div><p className="eyebrow red">PIANO AUTOMATICO</p><h2>Completa la giornata</h2></div><span className={`completion-status ${completionPlan.status}`}>{completionPlan.status}</span></div>
+            <p className="muted">Il motore ha generato solo i macro mancanti partendo dal target originale e dal timing attivo. Gli alimenti gia inseriti non vengono toccati.</p>
+            <div className="result-summary"><span>Residuo target {completionPlan.target.carbs.toFixed(1)}C / {completionPlan.target.protein.toFixed(1)}P / {completionPlan.target.fat.toFixed(1)}F</span><span>Generato {completionPlan.actual.carbs.toFixed(1)}C / {completionPlan.actual.protein.toFixed(1)}P / {completionPlan.actual.fat.toFixed(1)}F</span></div>
+            <div className="completion-meals">{completionPlan.meals.map((meal, index) => meal.foods.length ? <article key={`completion-${index}`}><strong>{meal.name}</strong>{meal.foods.map((portion) => <div className="food-line" key={`${meal.name}-${portion.foodId}`}><span>{portion.name}</span><b>{portion.grams} g</b></div>)}</article> : null)}</div>
+            <div className="completion-actions"><button className="primary" onClick={applySmartCompletion}>Applica al diario</button><button className="secondary" onClick={() => completeManualDay(true)}>Rigenera</button><button className="ghost" onClick={() => setCompletionPlan(null)}>Scarta</button></div>
+          </section>}
 
           {manualMeals.map((meal, mealIndex) => {
             const actual = macrosForManualMeal(meal);
