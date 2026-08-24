@@ -10,6 +10,7 @@ import {
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { getLocalValue, initLocalDatabase, setLocalValue } from '@/storage/localDatabase';
 import { scanProductBarcode } from '@/services/barcodeService';
+import { lookupOpenFoodFacts } from '@/services/openFoodFactsService';
 import type {
   GeneratedMenu,
   LocalFood,
@@ -212,15 +213,34 @@ export function App() {
 
   const scanBarcode = async () => {
     try {
-      setStatus('Apertura scanner…');
+      setStatus('Apertura scannerâ€¦');
       const barcode = await scanProductBarcode();
-      const found = foods.find((food) => food.barcode === barcode);
-      if (found) {
-        setFoodSearch(found.name);
-        setStatus(`Trovato: ${found.name}`);
-      } else {
+      const localFood = foods.find((food) => food.barcode === barcode);
+      if (localFood) {
+        setFoodSearch(localFood.name);
+        setStatus(`Trovato nel database locale: ${localFood.name}`);
+        return;
+      }
+
+      setStatus(`Barcode ${barcode} letto. Ricerca su Open Food Factsâ€¦`);
+      try {
+        const externalFood = await lookupOpenFoodFacts(barcode);
+        if (externalFood) {
+          setCustomFoods((current) => [externalFood, ...current.filter((food) => food.barcode !== barcode)]);
+          setFoodSearch(externalFood.name);
+          setManualFood({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
+          setStatus(`Trovato online e salvato sul dispositivo: ${externalFood.name}${externalFood.brand ? ` Â· ${externalFood.brand}` : ''}`);
+          return;
+        }
+
         setManualFood((current) => ({ ...current, barcode }));
-        setStatus(`Barcode ${barcode} non presente: inserisci i valori nutrizionali una sola volta.`);
+        setStatus(`Barcode ${barcode} non trovato su Open Food Facts. Puoi inserirlo manualmente una sola volta.`);
+      } catch (lookupError) {
+        setManualFood((current) => ({ ...current, barcode }));
+        const lookupText = String(lookupError);
+        setStatus(lookupText.includes('OPEN_FOOD_FACTS_TIMEOUT') || lookupText.includes('Failed to fetch')
+          ? `Barcode ${barcode} letto, ma la ricerca online non Ã¨ disponibile. Riprova con connessione internet oppure inseriscilo manualmente.`
+          : `Barcode ${barcode} letto. Open Food Facts: ${lookupText}`);
       }
     } catch (error) {
       const text = String(error);
