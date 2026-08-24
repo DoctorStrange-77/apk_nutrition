@@ -4,7 +4,10 @@ import { DiaryDateBar } from '@/components/DiaryDateBar';
 import { DateActionModal } from '@/components/DateActionModal';
 import { SmartDayCard } from '@/components/SmartDayCard';
 import { CompletionPlanCard } from '@/components/CompletionPlanCard';
+import { TodaySummaryCard } from '@/components/TodaySummaryCard';
 import { FoodReplacementModal } from '@/components/FoodReplacementModal';
+import { RecipeEditorModal } from '@/components/RecipeEditorModal';
+import { SavedMealModal } from '@/components/SavedMealModal';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
 import { FoodPickerModal } from '@/components/FoodPickerModal';
 import { FoodLibrarySearchModal } from '@/components/FoodLibrarySearchModal';
@@ -18,6 +21,7 @@ import { kcalFromMacros, macrosForManualDay, macrosForManualItem, macrosForManua
 import { applyCompletionPlan, buildSingleMealTiming, buildSmartCompletionContext, completionNeeded, replaceGeneratedMeal } from '@/domain/smartCompletion';
 import { buildLockedRegenerationContext, mergeUnlockedRegeneration, replaceFoodSmart, suggestEquivalentFoods, toggleMealLock, type FoodReplacementSuggestion } from '@/domain/smartEditing';
 import { buildCurrentDiaryDay, copyDiaryDay, copyMealIntoDay, emptyMealsForTiming, localDateKey, makeDiaryDay, shiftDateKey } from '@/domain/diary';
+import { appendSavedMeal, createEmptyRecipe, createSavedMealTemplate, recipeToLocalFood, validateRecipe } from '@/domain/recipes';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode } from '@/services/barcodeService';
 import { lookupOpenFoodFacts } from '@/services/openFoodFactsService';
@@ -30,7 +34,9 @@ import type {
   MacroTarget,
   ManualMeal,
   NutritionAppSnapshot,
+  Recipe,
   SavedManualMenu,
+  SavedMealTemplate,
   TimingMeal,
   TimingTemplate,
 } from '@/types/nutrition';
@@ -79,7 +85,7 @@ const syncMealsToTiming = (timing: TimingTemplate, current: ManualMeal[]): Manua
 
 export function App() {
   const [tab, setTab] = useState<Tab>('menu');
-  const [menuMode, setMenuMode] = useState<MenuMode>('automatic');
+  const [menuMode, setMenuMode] = useState<MenuMode>('manual');
   const [ready, setReady] = useState(false);
   const [target, setTarget] = useState<MacroTarget>(DEFAULT_TARGET);
   const [customTimings, setCustomTimings] = useState<TimingTemplate[]>([]);
@@ -94,6 +100,8 @@ export function App() {
   const [selectedFoodIds, setSelectedFoodIds] = useState<string[]>([]);
   const [favoriteFoodIds, setFavoriteFoodIds] = useState<string[]>([]);
   const [recentFoodIds, setRecentFoodIds] = useState<string[]>([]);
+  const [savedMealTemplates, setSavedMealTemplates] = useState<SavedMealTemplate[]>([]);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [activeTimingId, setActiveTimingId] = useState('omogeneo');
   const [menu, setMenu] = useState<GeneratedMenu | null>(null);
   const [completionPlan, setCompletionPlan] = useState<GeneratedMenu | null>(null);
@@ -104,6 +112,12 @@ export function App() {
   const [editingTiming, setEditingTiming] = useState<TimingTemplate | null>(null);
   const [editingFood, setEditingFood] = useState<LocalFood | null>(null);
   const [replacementContext, setReplacementContext] = useState<{ mealIndex: number; foodIndex: number } | null>(null);
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
+  const [recipePickerOpen, setRecipePickerOpen] = useState(false);
+  const [recipePickerSearch, setRecipePickerSearch] = useState('');
+  const [savedMealMode, setSavedMealMode] = useState<'save' | 'pick' | null>(null);
+  const [savedMealSourceIndex, setSavedMealSourceIndex] = useState<number | null>(null);
+  const [savedMealTargetMealId, setSavedMealTargetMealId] = useState<string | null>(null);
   const [manualPickerMealId, setManualPickerMealId] = useState<string | null>(null);
   const [manualPickerSearch, setManualPickerSearch] = useState('');
   const [showNewFood, setShowNewFood] = useState(false);
@@ -118,8 +132,9 @@ export function App() {
   const foods = useMemo(() => {
     const base = BUILDER_FOODS.map((food) => foodOverrides[food.id] || food).filter((food) => !deletedFoodIds.includes(food.id));
     const custom = customFoods.filter((food) => !deletedFoodIds.includes(food.id));
-    return [...base, ...custom];
-  }, [customFoods, foodOverrides, deletedFoodIds]);
+    const recipeFoods = recipes.map(recipeToLocalFood).filter((food) => !deletedFoodIds.includes(food.id));
+    return [...base, ...custom, ...recipeFoods];
+  }, [customFoods, foodOverrides, deletedFoodIds, recipes]);
   const activeTiming = timings.find((timing) => timing.id === activeTimingId) || timings[0];
   const kcal = kcalFromMacros(target);
   const mealTargets = activeTiming ? calculateMealTargets(target, activeTiming) : [];
@@ -137,6 +152,10 @@ export function App() {
     const query = foodSearch.trim().toLowerCase();
     return foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.subcategory || ''} ${food.barcode || ''}`.toLowerCase().includes(query));
   }, [foods, foodSearch]);
+  const recipePickerFoods = useMemo(() => {
+    const query = recipePickerSearch.trim().toLowerCase();
+    return foods.filter((food) => food.source !== 'recipe' && (!query || `${food.name} ${food.brand || ''} ${food.barcode || ''}`.toLowerCase().includes(query))).slice(0, 80);
+  }, [foods, recipePickerSearch]);
   const manualPickerFoods = useMemo(() => {
     const query = manualPickerSearch.trim().toLowerCase();
     const filtered = foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.barcode || ''}`.toLowerCase().includes(query));
@@ -164,6 +183,8 @@ export function App() {
         setDeletedFoodIds(snapshot.deletedFoodIds || []);
         setSavedMenus(snapshot.savedMenus || []);
         setSavedManualMenus(snapshot.savedManualMenus || []);
+        setSavedMealTemplates(snapshot.savedMealTemplates || []);
+        setRecipes(snapshot.recipes || []);
         const today = localDateKey();
         const existingDays = snapshot.diaryDays || {};
         const legacyMeals = snapshot.manualMeals || [];
@@ -176,7 +197,7 @@ export function App() {
         setTarget({ ...initialDay.target });
         setActiveTimingId(initialDay.timingTemplateId || initialTimingId);
         setMenu(initialDay.generatedMenu ? structuredClone(initialDay.generatedMenu) : null);
-        setMenuMode(snapshot.lastMenuMode || 'automatic');
+        setMenuMode('manual');
         setSelectedFoodIds(snapshot.selectedFoodIds || []);
         setFavoriteFoodIds(snapshot.favoriteFoodIds || []);
         setRecentFoodIds(snapshot.recentFoodIds || []);
@@ -202,10 +223,10 @@ export function App() {
     const snapshot: NutritionAppSnapshot = {
       customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus,
       manualMeals, lastTarget: target, lastTimingId: activeTimingId, lastMenuMode: menuMode, selectedFoodIds,
-      diaryDays: persistedDays, activeDiaryDate, favoriteFoodIds, recentFoodIds,
+      diaryDays: persistedDays, activeDiaryDate, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes,
     };
     void setLocalValue('snapshot', snapshot).catch((error) => setStatus(`Salvataggio locale: ${String(error)}`));
-  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds, diaryDays, activeDiaryDate, menu, favoriteFoodIds, recentFoodIds]);
+  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds, diaryDays, activeDiaryDate, menu, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes]);
 
   const currentDiarySnapshot = () =>
     buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu);
@@ -334,6 +355,15 @@ export function App() {
     setStatus('Menu automatico salvato sul dispositivo.');
   };
 
+  const useGeneratedMenuInDiary = () => {
+    if (!menu || !activeTiming) return;
+    const empty = emptyMealsForTiming(activeTiming);
+    setManualMeals(applyCompletionPlan(empty, menu, foods));
+    setMenuMode('manual');
+    setCompletionPlan(null);
+    setStatus('Menu automatico applicato al diario di oggi.');
+  };
+
   const applySmartCompletion = () => {
     if (!completionPlan) return;
     setManualMeals((current) => applyCompletionPlan(current, completionPlan, foods));
@@ -375,13 +405,7 @@ export function App() {
   const applyFoodReplacement = (suggestion: FoodReplacementSuggestion) => {
     if (!menu || !replacementContext) return;
     try {
-      const next = replaceFoodSmart(
-        menu,
-        replacementContext.mealIndex,
-        replacementContext.foodIndex,
-        suggestion.food,
-        foods,
-      );
+      const next = replaceFoodSmart(menu, replacementContext.mealIndex, replacementContext.foodIndex, suggestion.food, foods);
       setMenu(next);
       setRecentFoodIds((current) => [suggestion.food.id, ...current.filter((id) => id !== suggestion.food.id)].slice(0, 30));
       setReplacementContext(null);
@@ -471,6 +495,12 @@ export function App() {
 
   const saveEditingFood = () => {
     if (!editingFood || !editingFood.name.trim()) return;
+    if (editingFood.source === 'recipe' && editingFood.recipeId) {
+      const recipe = recipes.find((item) => item.id === editingFood.recipeId);
+      setEditingFood(null);
+      if (recipe) setEditingRecipe(structuredClone(recipe));
+      return;
+    }
     const normalized: LocalFood = {
       ...editingFood,
       name: editingFood.name.trim(),
@@ -496,6 +526,12 @@ export function App() {
 
   const deleteEditingFood = () => {
     if (!editingFood) return;
+    if (editingFood.source === 'recipe' && editingFood.recipeId) {
+      const recipe = recipes.find((item) => item.id === editingFood.recipeId);
+      setEditingFood(null);
+      if (recipe) setEditingRecipe(structuredClone(recipe));
+      return;
+    }
     const id = editingFood.id;
     const isBuilder = BUILDER_FOODS.some((food) => food.id === id);
     if (isBuilder) {
@@ -509,6 +545,14 @@ export function App() {
     setStatus('Alimento eliminato dal database locale.');
   };
 
+  const openFoodDetail = (food: LocalFood) => {
+    if (food.source === 'recipe' && food.recipeId) {
+      const recipe = recipes.find((item) => item.id === food.recipeId);
+      if (recipe) { setEditingRecipe(structuredClone(recipe)); return; }
+    }
+    setEditingFood(structuredClone(food));
+  };
+
   const scanBarcode = async () => {
     try {
       setStatus('Apertura scanner...');
@@ -516,7 +560,7 @@ export function App() {
       const localFood = foods.find((food) => food.barcode === barcode);
       if (localFood) {
         setFoodSearch(localFood.name);
-        setEditingFood(structuredClone(localFood));
+        openFoodDetail(localFood);
         setStatus(`Trovato nel database locale: ${localFood.name}`);
         return;
       }
@@ -549,7 +593,7 @@ export function App() {
   const addFoodToManualMeal = (mealId: string, food: LocalFood) => {
     setCompletionPlan(null);
     setRecentFoodIds((current) => [food.id, ...current.filter((id) => id !== food.id)].slice(0, 30));
-    const grams = Math.max(1, food.grammiMin || 100);
+    const grams = Math.max(1, food.servingGrams || food.grammiMin || 100);
     setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: [...meal.items, { id: `manual-item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, food: structuredClone(food), grams }] } : meal));
     setManualPickerMealId(null);
     setManualPickerSearch('');
@@ -571,6 +615,50 @@ export function App() {
     setStatus('Giornata manuale azzerata.');
   };
 
+  const saveMealTemplate = (name: string) => {
+    if (savedMealSourceIndex == null || !manualMeals[savedMealSourceIndex]) return;
+    const template = createSavedMealTemplate(name, manualMeals[savedMealSourceIndex]);
+    setSavedMealTemplates((current) => [template, ...current].slice(0, 100));
+    setSavedMealMode(null);
+    setSavedMealSourceIndex(null);
+    setStatus(`Pasto salvato: ${template.name}.`);
+  };
+
+  const addSavedTemplate = (template: SavedMealTemplate) => {
+    if (!savedMealTargetMealId) return;
+    setManualMeals((current) => current.map((meal) => meal.id === savedMealTargetMealId ? appendSavedMeal(meal, template) : meal));
+    setSavedMealMode(null);
+    setSavedMealTargetMealId(null);
+    setCompletionPlan(null);
+    setStatus(`Aggiunto pasto salvato: ${template.name}.`);
+  };
+
+  const saveRecipe = () => {
+    if (!editingRecipe) return;
+    const errors = validateRecipe(editingRecipe);
+    if (errors.length) { setStatus(errors[0]); return; }
+    const normalized: Recipe = { ...editingRecipe, updatedAt: new Date().toISOString() };
+    setRecipes((current) => [normalized, ...current.filter((recipe) => recipe.id !== normalized.id)]);
+    setEditingRecipe(null);
+    setStatus(`Ricetta salvata: ${normalized.name}. Ora e disponibile anche nel motore automatico.`);
+  };
+
+  const deleteRecipe = () => {
+    if (!editingRecipe) return;
+    const id = editingRecipe.id;
+    setRecipes((current) => current.filter((recipe) => recipe.id !== id));
+    setSelectedFoodIds((current) => current.filter((foodId) => foodId !== `recipe-food:${id}`));
+    setEditingRecipe(null);
+    setStatus('Ricetta eliminata.');
+  };
+
+  const addRecipeIngredient = (food: LocalFood) => {
+    if (!editingRecipe || food.source === 'recipe') return;
+    setEditingRecipe({ ...editingRecipe, ingredients: [...editingRecipe.ingredients, { id: `recipe-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, food: structuredClone(food), grams: Math.max(1, food.grammiMin || 100) }] });
+    setRecipePickerOpen(false);
+    setRecipePickerSearch('');
+  };
+
   if (!ready) return <main className="app-shell"><p>Inizializzazione archivio locale...</p></main>;
 
   return (
@@ -578,8 +666,8 @@ export function App() {
       <header className="hero">
         <div>
           <p className="eyebrow">BUILDER NUTRITION</p>
-          <h1>Nutrition Engine V2</h1>
-          <p className="muted">Macro, timing, alimenti e menu sul dispositivo. Nessun login.</p>
+          <h1>{tab === 'menu' ? 'Oggi' : 'Nutrition Engine V2'}</h1>
+          <p className="muted">Macro + timing + generazione automatica. Diario locale, nessun login.</p>
         </div>
         <div className="kcal-badge">{kcal.toFixed(0)}<small>kcal</small></div>
       </header>
@@ -595,176 +683,144 @@ export function App() {
           onPickDate={() => setDateModalMode('navigate')}
           onCopyDay={() => setDateModalMode('copy-day')}
         />
-        <div className="mode-switch">
-          <button className={menuMode === 'automatic' ? 'active' : ''} onClick={() => setMenuMode('automatic')}>Composizione automatica</button>
-          <button className={menuMode === 'manual' ? 'active' : ''} onClick={() => setMenuMode('manual')}>Composizione manuale</button>
+        <TodaySummaryCard target={target} consumed={manualActual} onOpenGenerator={() => setMenuMode('automatic')} />
+        <div className="mode-switch diary-mode-switch">
+          <button className={menuMode === 'manual' ? 'active' : ''} onClick={() => setMenuMode('manual')}>Diario</button>
+          <button className={menuMode === 'automatic' ? 'active' : ''} onClick={() => setMenuMode('automatic')}>Generatore</button>
         </div>
-
-        <section className="card">
-          <h2>Target giornaliero</h2>
-          <div className="macro-grid">
-            <label>Carboidrati<input type="number" min="0" value={target.carbs} onChange={(e) => setTarget({ ...target, carbs: safeNumber(e.target.value) })} /><span>g</span></label>
-            <label>Proteine<input type="number" min="0" value={target.protein} onChange={(e) => setTarget({ ...target, protein: safeNumber(e.target.value) })} /><span>g</span></label>
-            <label>Grassi<input type="number" min="0" value={target.fat} onChange={(e) => setTarget({ ...target, fat: safeNumber(e.target.value) })} /><span>g</span></label>
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="row-between"><h2>Timing</h2><button className="ghost" onClick={() => setTab('timing')}>Gestisci</button></div>
-          <button className="selector-card" onClick={() => setShowTimingSelect(true)}>
-            <span><small>Timing attivo</small><strong>{activeTiming.name}</strong><em>{activeTiming.meals.length} pasti</em></span><b>›</b>
-          </button>
-          <div className="meal-targets">
-            {mealTargets.map((meal, index) => <div className="target-chip" key={`${activeTimingId}-${index}`}><strong>{meal.name}</strong><span>{meal.carbs.toFixed(0)}C · {meal.protein.toFixed(0)}P · {meal.fat.toFixed(0)}F</span></div>)}
-          </div>
-        </section>
-
-        <SmartDayCard
-          target={target}
-          consumed={manualActual}
-          residual={completionContext?.residualTarget || target}
-          hasEntries={hasManualEntries}
-          onComplete={() => completeManualDay(false)}
-          onOpenDiary={() => setMenuMode('manual')}
-        />
-        <CompletionPlanCard
-          plan={completionPlan}
-          onApply={applySmartCompletion}
-          onRegenerate={() => completeManualDay(true)}
-          onDiscard={() => setCompletionPlan(null)}
-        />
 
         {menuMode === 'automatic' && <>
           <section className="card">
+            <h2>Target giornaliero</h2>
+            <div className="macro-grid">
+              <label>Carboidrati<input type="number" min="0" value={target.carbs} onChange={(e) => setTarget({ ...target, carbs: safeNumber(e.target.value) })} /><span>g</span></label>
+              <label>Proteine<input type="number" min="0" value={target.protein} onChange={(e) => setTarget({ ...target, protein: safeNumber(e.target.value) })} /><span>g</span></label>
+              <label>Grassi<input type="number" min="0" value={target.fat} onChange={(e) => setTarget({ ...target, fat: safeNumber(e.target.value) })} /><span>g</span></label>
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="row-between"><h2>Timing</h2><button className="ghost" onClick={() => setTab('timing')}>Gestisci</button></div>
+            <button className="selector-card" onClick={() => setShowTimingSelect(true)}>
+              <span><small>Timing attivo</small><strong>{activeTiming.name}</strong><em>{activeTiming.meals.length} pasti</em></span><b>›</b>
+            </button>
+            <div className="meal-targets">
+              {mealTargets.map((meal, index) => <div className="target-chip" key={`${activeTimingId}-${index}`}><strong>{meal.name}</strong><span>{meal.carbs.toFixed(0)}C · {meal.protein.toFixed(0)}P · {meal.fat.toFixed(0)}F</span></div>)}
+            </div>
+          </section>
+
+          <section className="card">
             <div className="row-between"><h2>Pool alimenti</h2><button className="ghost" onClick={() => { setFoodSearch(''); setShowPoolSearch(true); }}>Scegli</button></div>
-            <p className="muted">{selectedFoodIds.length ? `${selectedFoodIds.length} alimenti selezionati: il motore usera solo questi.` : `Pool completo: ${foods.length} alimenti disponibili.`}</p>
+            <p className="muted">{selectedFoodIds.length ? `${selectedFoodIds.length} alimenti selezionati: il motore usera solo questi.` : `Pool completo: ${foods.length} alimenti disponibili, incluse le ricette.`}</p>
             {selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Usa tutto il database</button>}
           </section>
           <div className="actions"><button className="primary" onClick={() => generate(false)}>Genera menu</button><button className="secondary" onClick={() => generate(true)} disabled={!menu}>{menu?.lockedMealIndexes?.length ? 'Rigenera non bloccati' : 'Rigenera'}</button></div>
           {menu && <section className="card result-card">
-            <div className="row-between"><div><p className="eyebrow red">{menu.status.toUpperCase()}</p><h2>Menu generato</h2></div><div className="button-group"><button className="secondary" onClick={saveCurrentMenu}>Salva</button><button className="danger" onClick={() => { setMenu(null); setStatus('Menu corrente eliminato.'); }}>Elimina</button></div></div>
+            <div className="row-between"><div><p className="eyebrow red">{menu.status.toUpperCase()}</p><h2>Menu generato</h2></div><div className="button-group"><button className="primary" onClick={useGeneratedMenuInDiary}>Usa nel diario</button><button className="secondary" onClick={saveCurrentMenu}>Salva</button><button className="danger" onClick={() => { setMenu(null); setStatus('Menu corrente eliminato.'); }}>Elimina</button></div></div>
             <div className="result-summary"><span>Target {menu.target.carbs.toFixed(1)}C / {menu.target.protein.toFixed(1)}P / {menu.target.fat.toFixed(1)}F</span><span>Reale {menu.actual.carbs.toFixed(1)}C / {menu.actual.protein.toFixed(1)}P / {menu.actual.fat.toFixed(1)}F</span><span>Tolleranza {menu.tolerancePercent}%</span></div>
             {!!menu.lockedMealIndexes?.length && <div className="locked-summary"><span>🔒</span><strong>{menu.lockedMealIndexes.length} {menu.lockedMealIndexes.length === 1 ? 'pasto bloccato' : 'pasti bloccati'}</strong><small>La rigenerazione globale non li modifica.</small></div>}
             {menu.meals.map((meal, index) => <article className={`generated-meal ${menu.lockedMealIndexes?.includes(index) ? 'generated-meal-locked' : ''}`} key={`${menu.id}-${index}`}>
               <div className="row-between generated-meal-head"><div className="generated-meal-title"><strong>{meal.name}</strong><span className={meal.withinTolerance ? 'ok' : 'warn'}>{meal.workoutTiming !== 'none' ? meal.workoutTiming.toUpperCase() : ''}</span></div><div className="generated-meal-actions"><button className={`meal-lock-button ${menu.lockedMealIndexes?.includes(index) ? 'active' : ''}`} onClick={() => toggleGeneratedMealLock(index)}>{menu.lockedMealIndexes?.includes(index) ? '🔒 Bloccato' : '🔓 Blocca'}</button><button className="meal-regen-button" disabled={menu.lockedMealIndexes?.includes(index)} onClick={() => regenerateSingleMeal(index)}>Rigenera pasto</button></div></div>
               <small>Target {meal.target.carbs.toFixed(1)}C · {meal.target.protein.toFixed(1)}P · {meal.target.fat.toFixed(1)}F</small>
-              {meal.foods.map((portion, foodIndex) => <div className="smart-food-row" key={`${meal.name}-${portion.foodId}-${foodIndex}`}><button className="food-line food-link smart-food-detail" onClick={() => { const food = foods.find((item) => item.id === portion.foodId); if (food) setEditingFood(structuredClone(food)); }}><span>{portion.name}</span><strong>{portion.grams} g</strong></button><button className="replace-food-button" onClick={() => setReplacementContext({ mealIndex: index, foodIndex })}>Sostituisci</button></div>)}
+              {meal.foods.map((portion, foodIndex) => <div className="smart-food-row" key={`${meal.name}-${portion.foodId}-${foodIndex}`}><button className="food-line food-link smart-food-detail" onClick={() => { const food = foods.find((item) => item.id === portion.foodId); if (food) openFoodDetail(food); }}><span>{portion.name}</span><strong>{portion.grams} g</strong></button><button className="replace-food-button" onClick={() => setReplacementContext({ mealIndex: index, foodIndex })}>Sostituisci</button></div>)}
               <small>Reale {meal.actual.carbs.toFixed(1)}C · {meal.actual.protein.toFixed(1)}P · {meal.actual.fat.toFixed(1)}F</small>
             </article>)}
           </section>}
         </>}
 
         {menuMode === 'manual' && <>
-          <section className="card manual-summary">
-            <div className="row-between"><h2>Giornata manuale</h2><span className="live-badge">LIVE</span></div>
-            <div className="macro-progress-grid">
-              <div><small>Carboidrati</small><strong>{manualActual.carbs.toFixed(1)} / {target.carbs.toFixed(0)} g</strong></div>
-              <div><small>Proteine</small><strong>{manualActual.protein.toFixed(1)} / {target.protein.toFixed(0)} g</strong></div>
-              <div><small>Grassi</small><strong>{manualActual.fat.toFixed(1)} / {target.fat.toFixed(0)} g</strong></div>
-              <div><small>Calorie</small><strong>{kcalFromMacros(manualActual).toFixed(0)} / {kcal.toFixed(0)}</strong></div>
-            </div>
-            <div className="button-group manual-actions"><button className="secondary" onClick={saveManualDay}>Salva giornata</button><button className="danger" onClick={clearManualDay}>Azzera</button></div>
+          <SmartDayCard
+            target={target}
+            consumed={manualActual}
+            residual={completionContext?.residualTarget || target}
+            hasEntries={hasManualEntries}
+            onComplete={() => completeManualDay(false)}
+            onOpenDiary={() => setMenuMode('manual')}
+          />
+          <CompletionPlanCard
+            plan={completionPlan}
+            onApply={applySmartCompletion}
+            onRegenerate={() => completeManualDay(true)}
+            onDiscard={() => setCompletionPlan(null)}
+          />
+          <section className="diary-toolbar">
+            <span><strong>Diario alimentare</strong><small>{manualMeals.reduce((sum, meal) => sum + meal.items.length, 0)} alimenti registrati</small></span>
+            <div className="button-group"><button className="secondary" onClick={saveManualDay}>Salva</button><button className="danger" onClick={clearManualDay}>Azzera</button></div>
           </section>
 
           {manualMeals.map((meal, mealIndex) => {
             const actual = macrosForManualMeal(meal);
             const mealTarget = mealTargets[mealIndex];
-            return <section className="card manual-meal" key={meal.id}>
-              <div className="row-between"><div><h2>{meal.name}</h2>{mealTarget && <small className="meal-subtitle">Target {mealTarget.carbs.toFixed(0)}C · {mealTarget.protein.toFixed(0)}P · {mealTarget.fat.toFixed(0)}F</small>}</div><div className="meal-actions-inline"><button className="meal-copy-button" onClick={() => { setCopyMealIndex(mealIndex); setDateModalMode('copy-meal'); }}>Copia</button><button className="add-food-button" onClick={() => { setManualPickerMealId(meal.id); setManualPickerSearch(''); }}>+ Alimento</button></div></div>
+            return <section className="card manual-meal diary-meal-card" key={meal.id}>
+              <div className="row-between diary-meal-head"><div><h2>{meal.name}</h2><strong className="meal-kcal">{kcalFromMacros(actual).toFixed(0)} kcal</strong>{mealTarget && <small className="meal-subtitle">Target {mealTarget.carbs.toFixed(0)}C · {mealTarget.protein.toFixed(0)}P · {mealTarget.fat.toFixed(0)}F</small>}</div><div className="meal-actions-inline"><button className="meal-copy-button" onClick={() => { setCopyMealIndex(mealIndex); setDateModalMode('copy-meal'); }}>Copia</button><button className="meal-copy-button" disabled={!meal.items.length} onClick={() => { setSavedMealSourceIndex(mealIndex); setSavedMealMode('save'); }}>Salva pasto</button></div></div>
               {!meal.items.length && <p className="empty-meal">Nessun alimento inserito.</p>}
               {meal.items.map((item) => {
                 const itemMacros = macrosForManualItem(item);
                 return <div className="manual-item" key={item.id}>
-                  <button className="manual-food-name" onClick={() => setEditingFood(structuredClone(item.food))}><strong>{item.food.name}</strong><small>{itemMacros.carbs.toFixed(1)}C · {itemMacros.protein.toFixed(1)}P · {itemMacros.fat.toFixed(1)}F</small></button>
+                  <button className="manual-food-name" onClick={() => openFoodDetail(item.food)}><strong>{item.food.name}</strong><small>{itemMacros.carbs.toFixed(1)}C · {itemMacros.protein.toFixed(1)}P · {itemMacros.fat.toFixed(1)}F{item.food.servingName ? ` · ${item.food.servingName}` : ''}</small></button>
                   <label className="grams-field"><input type="number" min="0" value={item.grams} onChange={(e) => updateManualItemGrams(meal.id, item.id, safeNumber(e.target.value))} /><span>g</span></label>
                   <button className="icon-danger" aria-label="Rimuovi alimento" onClick={() => removeManualItem(meal.id, item.id)}>×</button>
                 </div>;
               })}
-              <div className="meal-total">Reale {actual.carbs.toFixed(1)}C · {actual.protein.toFixed(1)}P · {actual.fat.toFixed(1)}F</div>
+              <div className="meal-total diary-meal-footer"><span>Reale {actual.carbs.toFixed(1)}C · {actual.protein.toFixed(1)}P · {actual.fat.toFixed(1)}F</span><div><button className="add-food-button" onClick={() => { setSavedMealTargetMealId(meal.id); setSavedMealMode('pick'); }}>Pasti salvati</button><button className="add-food-button" onClick={() => { setManualPickerMealId(meal.id); setManualPickerSearch(''); }}>+ Aggiungi alimento</button></div></div>
             </section>;
           })}
         </>}
       </>}
 
-      {tab === 'timing' && <>
-        <section className="card">
-          <div className="row-between"><h2>Gestione timing</h2><button className="primary small" onClick={() => setEditingTiming(createEmptyTiming('Nuovo timing', 5))}>Nuovo</button></div>
-          <p className="muted">I timing Builder sono preinstallati. Duplicali per modificarli oppure creane uno da zero.</p>
-          <div className="timing-list">{timings.map((timing) => <div className="list-row" key={timing.id}><button className="list-main" onClick={() => setActiveTimingId(timing.id)}><strong>{timing.name}</strong><span>{timing.meals.length} pasti · {timing.dayKind}</span></button><button className="secondary" onClick={() => setEditingTiming(timing.builtIn ? cloneTimingForEdit(timing) : structuredClone(timing))}>{timing.builtIn ? 'Duplica' : 'Modifica'}</button>{!timing.builtIn && <button className="danger" onClick={() => setCustomTimings((current) => current.filter((item) => item.id !== timing.id))}>Elimina</button>}</div>)}</div>
-        </section>
-      </>}
-
-      {tab === 'foods' && <>
-        <section className="card">
-          <div className="row-between foods-heading"><div><p className="eyebrow red">LIBRERIA</p><h2>Database alimenti</h2></div><div className="button-group"><button className="secondary" onClick={() => { setFoodSearch(''); setShowFoodSearch(true); }}>Cerca</button><button className="secondary" onClick={() => setShowNewFood(true)}>+ Nuovo</button><button className="primary" onClick={() => void scanBarcode()}>Scansiona</button></div></div>
-          <p className="muted">Tocca Cerca per trovare rapidamente un alimento. Tocca una voce per aprire la scheda.</p>
-          <div className="food-list browse-food-list">{foods.slice(0, 100).map((food) => <button className="food-browser-row" key={food.id} onClick={() => setEditingFood(structuredClone(food))}><span className="food-avatar small">{food.name.slice(0,1).toUpperCase()}</span><span><strong>{food.name}</strong><small>{foodMacros(food)} · {food.source}{food.brand ? ` · ${food.brand}` : ''}</small></span><b>›</b></button>)}</div>
-        </section>
-
-      </>}
-
-      {tab === 'saved' && <section className="card">
-        <div className="row-between"><h2>Menu salvati</h2><span className="saved-count">{savedMenus.length + savedManualMenus.length}</span></div>
-        {!savedMenus.length && !savedManualMenus.length && <p className="muted">Nessun menu salvato.</p>}
-        {!!savedMenus.length && <><h3 className="section-label">AUTOMATICI</h3>{savedMenus.map((saved) => <div className="saved-row" key={saved.id}><button className="list-main" onClick={() => { setTarget(saved.target); setMenu(saved); setActiveTimingId(saved.timingTemplateId); setMenuMode('automatic'); setTab('menu'); }}><strong>{new Date(saved.createdAt).toLocaleString()}</strong><span>{saved.status} · {saved.targetKcal.toFixed(0)} kcal</span></button><button className="danger" onClick={() => setSavedMenus((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button></div>)}</>}
-        {!!savedManualMenus.length && <><h3 className="section-label">MANUALI</h3>{savedManualMenus.map((saved) => <div className="saved-row" key={saved.id}><button className="list-main" onClick={() => { setTarget(saved.target); setManualMeals(structuredClone(saved.meals)); setActiveTimingId(saved.timingTemplateId); setMenuMode('manual'); setTab('menu'); }}><strong>{new Date(saved.createdAt).toLocaleString()}</strong><span>manuale · {saved.actualKcal.toFixed(0)} / {saved.targetKcal.toFixed(0)} kcal</span></button><button className="danger" onClick={() => setSavedManualMenus((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button></div>)}</>}
+      {tab === 'timing' && <section className="card">
+        <div className="row-between"><h2>Gestione timing</h2><button className="primary small" onClick={() => setEditingTiming(createEmptyTiming('Nuovo timing', 5))}>Nuovo</button></div>
+        <p className="muted">I timing Builder sono preinstallati. Duplicali per modificarli oppure creane uno da zero.</p>
+        <div className="timing-list">{timings.map((timing) => <div className="list-row" key={timing.id}><button className="list-main" onClick={() => setActiveTimingId(timing.id)}><strong>{timing.name}</strong><span>{timing.meals.length} pasti · {timing.dayKind}</span></button><button className="secondary" onClick={() => setEditingTiming(timing.builtIn ? cloneTimingForEdit(timing) : structuredClone(timing))}>{timing.builtIn ? 'Duplica' : 'Modifica'}</button>{!timing.builtIn && <button className="danger" onClick={() => setCustomTimings((current) => current.filter((item) => item.id !== timing.id))}>Elimina</button>}</div>)}</div>
       </section>}
 
-      <DateActionModal
-        open={!!dateModalMode}
-        mode={dateModalMode || 'navigate'}
-        currentDate={activeDiaryDate}
-        onClose={() => { setDateModalMode(null); setCopyMealIndex(null); }}
-        onConfirm={handleDateAction}
-      />
-      <FoodReplacementModal
-        open={!!replacementContext}
-        original={replacementOriginal}
-        suggestions={replacementSuggestions}
-        onClose={() => setReplacementContext(null)}
-        onSelect={applyFoodReplacement}
-      />
-      <FoodEditorModal
-        food={editingFood}
-        onChange={setEditingFood}
-        onClose={() => setEditingFood(null)}
-        onSave={saveEditingFood}
-        onDelete={deleteEditingFood}
-      />
-      <TimingEditorModal
-        timing={editingTiming}
-        onChange={setEditingTiming}
-        onClose={() => setEditingTiming(null)}
-        onSave={saveTiming}
-        onResize={resizeTiming}
-        onDistribute={distributeEqually}
-        onUpdateMeal={updateEditingMeal}
-      />
-      <TimingSelectModal open={showTimingSelect} timings={timings} activeId={activeTimingId} onClose={() => setShowTimingSelect(false)} onSelect={setActiveTimingId} />
-      <FoodLibrarySearchModal open={showFoodSearch} title="Cerca alimenti" eyebrow="DATABASE ALIMENTI" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowFoodSearch(false)} onOpenFood={(food) => { setShowFoodSearch(false); setEditingFood(structuredClone(food)); }} />
-      <FoodLibrarySearchModal open={showPoolSearch} title="Seleziona alimenti" eyebrow="POOL AUTOMATICO" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowPoolSearch(false)} onOpenFood={(food) => { setShowPoolSearch(false); setEditingFood(structuredClone(food)); }} selectedIds={selectedFoodIds} onToggleSelected={(id) => setSelectedFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])} />
-      <FoodPickerModal
-        open={!!manualPickerMealId}
-        foods={manualPickerFoods}
-        query={manualPickerSearch}
-        onQueryChange={setManualPickerSearch}
-        favoriteIds={favoriteFoodIds}
-        recentIds={recentFoodIds}
-        onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])}
-        onClose={() => setManualPickerMealId(null)}
-        onSelect={(food) => {
-          if (manualPickerMealId) addFoodToManualMeal(manualPickerMealId, food);
-        }}
-      />
-      <NewFoodModal
-        open={showNewFood}
-        value={manualFood}
-        onChange={setManualFood}
-        onClose={() => setShowNewFood(false)}
-        onSave={addManualFood}
-      />
-      <BottomNav active={tab} onChange={setTab} />
+      {tab === 'foods' && <section className="card">
+        <div className="row-between foods-heading"><div><p className="eyebrow red">LIBRERIA</p><h2>Database alimenti</h2></div><div className="button-group"><button className="secondary" onClick={() => { setFoodSearch(''); setShowFoodSearch(true); }}>Cerca</button><button className="secondary" onClick={() => setShowNewFood(true)}>+ Alimento</button><button className="secondary" onClick={() => setEditingRecipe(createEmptyRecipe())}>+ Ricetta</button><button className="primary" onClick={() => void scanBarcode()}>Scansiona</button></div></div>
+        <p className="muted">Alimenti Builder, personali, barcode e ricette. Le ricette possono essere usate anche dal generatore automatico.</p>
+        <div className="food-list browse-food-list">{foods.slice(0, 100).map((food) => <button className="food-browser-row" key={food.id} onClick={() => openFoodDetail(food)}><span className="food-avatar small">{food.source === 'recipe' ? 'R' : food.name.slice(0,1).toUpperCase()}</span><span><strong>{food.name}</strong><small>{foodMacros(food)} · {food.source}{food.brand ? ` · ${food.brand}` : ''}{food.servingName ? ` · ${food.servingName} ${food.servingGrams}g` : ''}</small></span><b>›</b></button>)}</div>
+      </section>}
 
+      {tab === 'saved' && <section className="card saved-hub">
+        <div className="row-between"><div><p className="eyebrow red">LIBRERIA PERSONALE</p><h2>Salvati</h2></div><span className="saved-count">{savedMenus.length + savedManualMenus.length + savedMealTemplates.length + recipes.length}</span></div>
+        <div className="saved-hub-actions"><button className="primary" onClick={() => setEditingRecipe(createEmptyRecipe())}>+ Nuova ricetta</button></div>
+        {!!recipes.length && <><h3 className="section-label">RICETTE</h3>{recipes.map((recipe) => { const food = recipeToLocalFood(recipe); return <div className="saved-row" key={recipe.id}><button className="list-main" onClick={() => setEditingRecipe(structuredClone(recipe))}><strong>{recipe.name}</strong><span>{foodMacros(food)} /100g · {recipe.servingName} {recipe.servingGrams}g</span></button><button className="secondary" onClick={() => setEditingRecipe(structuredClone(recipe))}>Modifica</button></div>; })}</>}
+        {!!savedMealTemplates.length && <><h3 className="section-label">PASTI SALVATI</h3>{savedMealTemplates.map((saved) => <div className="saved-row" key={saved.id}><div className="list-main"><strong>{saved.name}</strong><span>{saved.items.length} alimenti</span></div><button className="danger" onClick={() => setSavedMealTemplates((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button></div>)}</>}
+        {!!savedMenus.length && <><h3 className="section-label">MENU AUTOMATICI</h3>{savedMenus.map((saved) => <div className="saved-row" key={saved.id}><button className="list-main" onClick={() => { setTarget(saved.target); setMenu(saved); setActiveTimingId(saved.timingTemplateId); setMenuMode('automatic'); setTab('menu'); }}><strong>{new Date(saved.createdAt).toLocaleString()}</strong><span>{saved.status} · {saved.targetKcal.toFixed(0)} kcal</span></button><button className="danger" onClick={() => setSavedMenus((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button></div>)}</>}
+        {!!savedManualMenus.length && <><h3 className="section-label">GIORNATE SALVATE</h3>{savedManualMenus.map((saved) => <div className="saved-row" key={saved.id}><button className="list-main" onClick={() => { setTarget(saved.target); setManualMeals(structuredClone(saved.meals)); setActiveTimingId(saved.timingTemplateId); setMenuMode('manual'); setTab('menu'); }}><strong>{new Date(saved.createdAt).toLocaleString()}</strong><span>{saved.actualKcal.toFixed(0)} / {saved.targetKcal.toFixed(0)} kcal</span></button><button className="danger" onClick={() => setSavedManualMenus((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button></div>)}</>}
+        {!recipes.length && !savedMealTemplates.length && !savedMenus.length && !savedManualMenus.length && <p className="muted">Non hai ancora salvato ricette, pasti o menu.</p>}
+      </section>}
+
+      <DateActionModal open={!!dateModalMode} mode={dateModalMode || 'navigate'} currentDate={activeDiaryDate} onClose={() => { setDateModalMode(null); setCopyMealIndex(null); }} onConfirm={handleDateAction} />
+      <FoodReplacementModal open={!!replacementContext} original={replacementOriginal} suggestions={replacementSuggestions} onClose={() => setReplacementContext(null)} onSelect={applyFoodReplacement} />
+      <FoodEditorModal food={editingFood} onChange={setEditingFood} onClose={() => setEditingFood(null)} onSave={saveEditingFood} onDelete={deleteEditingFood} />
+      <RecipeEditorModal
+        recipe={editingRecipe}
+        onChange={setEditingRecipe}
+        onClose={() => { setEditingRecipe(null); setRecipePickerOpen(false); }}
+        onSave={saveRecipe}
+        onDelete={editingRecipe && recipes.some((recipe) => recipe.id === editingRecipe.id) ? deleteRecipe : undefined}
+        onAddIngredient={() => { setRecipePickerSearch(''); setRecipePickerOpen(true); }}
+        onRemoveIngredient={(index) => setEditingRecipe((current) => current ? { ...current, ingredients: current.ingredients.filter((_, itemIndex) => itemIndex !== index) } : current)}
+        onUpdateIngredientGrams={(index, grams) => setEditingRecipe((current) => current ? { ...current, ingredients: current.ingredients.map((item, itemIndex) => itemIndex === index ? { ...item, grams } : item) } : current)}
+      />
+      <SavedMealModal
+        open={!!savedMealMode}
+        mode={savedMealMode || 'pick'}
+        sourceMeal={savedMealSourceIndex == null ? null : manualMeals[savedMealSourceIndex]}
+        templates={savedMealTemplates}
+        onClose={() => { setSavedMealMode(null); setSavedMealSourceIndex(null); setSavedMealTargetMealId(null); }}
+        onSave={saveMealTemplate}
+        onPick={addSavedTemplate}
+        onDelete={(id) => setSavedMealTemplates((current) => current.filter((entry) => entry.id !== id))}
+      />
+      <TimingEditorModal timing={editingTiming} onChange={setEditingTiming} onClose={() => setEditingTiming(null)} onSave={saveTiming} onResize={resizeTiming} onDistribute={distributeEqually} onUpdateMeal={updateEditingMeal} />
+      <TimingSelectModal open={showTimingSelect} timings={timings} activeId={activeTimingId} onClose={() => setShowTimingSelect(false)} onSelect={setActiveTimingId} />
+      <FoodLibrarySearchModal open={showFoodSearch} title="Cerca alimenti" eyebrow="DATABASE ALIMENTI" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowFoodSearch(false)} onOpenFood={(food) => { setShowFoodSearch(false); openFoodDetail(food); }} />
+      <FoodLibrarySearchModal open={showPoolSearch} title="Seleziona alimenti" eyebrow="POOL AUTOMATICO" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowPoolSearch(false)} onOpenFood={(food) => { setShowPoolSearch(false); openFoodDetail(food); }} selectedIds={selectedFoodIds} onToggleSelected={(id) => setSelectedFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])} />
+      <FoodPickerModal open={!!manualPickerMealId} foods={manualPickerFoods} query={manualPickerSearch} onQueryChange={setManualPickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setManualPickerMealId(null)} onSelect={(food) => { if (manualPickerMealId) addFoodToManualMeal(manualPickerMealId, food); }} />
+      <FoodPickerModal open={recipePickerOpen} foods={recipePickerFoods} query={recipePickerSearch} onQueryChange={setRecipePickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setRecipePickerOpen(false)} onSelect={addRecipeIngredient} />
+      <NewFoodModal open={showNewFood} value={manualFood} onChange={setManualFood} onClose={() => setShowNewFood(false)} onSave={addManualFood} />
+      <BottomNav active={tab} onChange={setTab} />
     </main>
   );
 }
