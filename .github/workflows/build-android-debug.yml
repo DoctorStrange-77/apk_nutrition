@@ -3,8 +3,6 @@ name: Build Android Debug APK
 on:
   push:
     branches: [develop]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -25,6 +23,12 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Restore persistent debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: builder-nutrition-debug-keystore-v1
+
       - name: Install dependencies
         run: npm install
 
@@ -36,6 +40,22 @@ jobs:
 
       - name: Sync Capacitor assets
         run: npx cap sync android
+
+      - name: Set Android debug version
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          version = json.loads(Path('package.json').read_text())['version']
+          run_number = os.environ['GITHUB_RUN_NUMBER']
+          gradle = Path('android/app/build.gradle')
+          text = gradle.read_text()
+          text = text.replace('versionCode 1', f'versionCode {run_number}')
+          text = text.replace('versionName "1.0"', f'versionName "{version}-dev.{run_number}"')
+          gradle.write_text(text)
+          PY
 
       - name: Build debug APK
         working-directory: android
