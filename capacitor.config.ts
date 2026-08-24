@@ -4,7 +4,6 @@ const config: CapacitorConfig = {
   appId: 'com.builderstrength.nutrition',
   appName: 'Builder Nutrition',
   webDir: 'dist',
-  bundledWebRuntime: false,
 };
 
 export default config;
