@@ -4,6 +4,7 @@ import { DiaryDateBar } from '@/components/DiaryDateBar';
 import { DateActionModal } from '@/components/DateActionModal';
 import { SmartDayCard } from '@/components/SmartDayCard';
 import { CompletionPlanCard } from '@/components/CompletionPlanCard';
+import { FoodReplacementModal } from '@/components/FoodReplacementModal';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
 import { FoodPickerModal } from '@/components/FoodPickerModal';
 import { FoodLibrarySearchModal } from '@/components/FoodLibrarySearchModal';
@@ -15,6 +16,7 @@ import { BUILT_IN_TIMINGS } from '@/data/builtInTimings';
 import { calculateMealTargets, createEmptyTiming, timingTotals, validateTimingTemplate } from '@/domain/timing';
 import { kcalFromMacros, macrosForManualDay, macrosForManualItem, macrosForManualMeal } from '@/domain/manualMenu';
 import { applyCompletionPlan, buildSingleMealTiming, buildSmartCompletionContext, completionNeeded, replaceGeneratedMeal } from '@/domain/smartCompletion';
+import { buildLockedRegenerationContext, mergeUnlockedRegeneration, replaceFoodSmart, suggestEquivalentFoods, toggleMealLock, type FoodReplacementSuggestion } from '@/domain/smartEditing';
 import { buildCurrentDiaryDay, copyDiaryDay, copyMealIntoDay, emptyMealsForTiming, localDateKey, makeDiaryDay, shiftDateKey } from '@/domain/diary';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode } from '@/services/barcodeService';
@@ -101,6 +103,7 @@ export function App() {
   const [foodSearch, setFoodSearch] = useState('');
   const [editingTiming, setEditingTiming] = useState<TimingTemplate | null>(null);
   const [editingFood, setEditingFood] = useState<LocalFood | null>(null);
+  const [replacementContext, setReplacementContext] = useState<{ mealIndex: number; foodIndex: number } | null>(null);
   const [manualPickerMealId, setManualPickerMealId] = useState<string | null>(null);
   const [manualPickerSearch, setManualPickerSearch] = useState('');
   const [showNewFood, setShowNewFood] = useState(false);
@@ -123,6 +126,13 @@ export function App() {
   const manualActual = useMemo(() => macrosForManualDay(manualMeals), [manualMeals]);
   const hasManualEntries = useMemo(() => manualMeals.some((meal) => meal.items.length > 0), [manualMeals]);
   const completionContext = useMemo(() => activeTiming ? buildSmartCompletionContext(target, activeTiming, manualMeals) : null, [target, activeTiming, manualMeals]);
+  const replacementOriginal = useMemo(() => replacementContext && menu ? menu.meals[replacementContext.mealIndex]?.foods[replacementContext.foodIndex] || null : null, [replacementContext, menu]);
+  const replacementSuggestions = useMemo(() => {
+    if (!replacementOriginal) return [];
+    const originalFood = foods.find((food) => food.id === replacementOriginal.foodId);
+    const pool = selectedFoodIds.length ? foods.filter((food) => selectedFoodIds.includes(food.id)) : foods;
+    return suggestEquivalentFoods(replacementOriginal, originalFood, pool, 16);
+  }, [replacementOriginal, foods, selectedFoodIds]);
   const filteredFoods = useMemo(() => {
     const query = foodSearch.trim().toLowerCase();
     return foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.subcategory || ''} ${food.barcode || ''}`.toLowerCase().includes(query));
@@ -261,6 +271,22 @@ export function App() {
     if (!activeTiming) return;
     try {
       const nextSeed = regenerate ? attemptSeed + 1 : attemptSeed;
+      if (regenerate && menu?.lockedMealIndexes?.length) {
+        const lockContext = buildLockedRegenerationContext(menu, activeTiming);
+        const regenerated = generateNutritionMenu({
+          target: lockContext.residualTarget,
+          timing: lockContext.residualTiming,
+          foods,
+          selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
+          attemptSeed: nextSeed,
+          dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
+        });
+        const merged = mergeUnlockedRegeneration(menu, regenerated, lockContext.unlockedIndexes);
+        setAttemptSeed(nextSeed);
+        setMenu(merged);
+        setStatus(`Rigenerati ${lockContext.unlockedIndexes.length} pasti. I pasti bloccati sono rimasti invariati.`);
+        return;
+      }
       const result = generateNutritionMenu({
         target,
         timing: activeTiming,
@@ -317,6 +343,10 @@ export function App() {
 
   const regenerateSingleMeal = (mealIndex: number) => {
     if (!menu || !activeTiming) return;
+    if (menu.lockedMealIndexes?.includes(mealIndex)) {
+      setStatus('Questo pasto e bloccato. Sbloccalo prima di rigenerarlo.');
+      return;
+    }
     const sourceMeal = menu.meals[mealIndex];
     if (!sourceMeal) return;
     try {
@@ -335,6 +365,29 @@ export function App() {
       setStatus(`Rigenerato solo il pasto: ${sourceMeal.name}. Gli altri pasti sono rimasti invariati.`);
     } catch (error) {
       setStatus(`Rigenerazione pasto non riuscita: ${String(error)}`);
+    }
+  };
+
+  const toggleGeneratedMealLock = (mealIndex: number) => {
+    setMenu((current) => current ? toggleMealLock(current, mealIndex) : current);
+  };
+
+  const applyFoodReplacement = (suggestion: FoodReplacementSuggestion) => {
+    if (!menu || !replacementContext) return;
+    try {
+      const next = replaceFoodSmart(
+        menu,
+        replacementContext.mealIndex,
+        replacementContext.foodIndex,
+        suggestion.food,
+        foods,
+      );
+      setMenu(next);
+      setRecentFoodIds((current) => [suggestion.food.id, ...current.filter((id) => id !== suggestion.food.id)].slice(0, 30));
+      setReplacementContext(null);
+      setStatus(`Sostituito con ${suggestion.food.name}. Il pasto e stato riottimizzato sul target.`);
+    } catch (error) {
+      setStatus(`Sostituzione non riuscita: ${String(error)}`);
     }
   };
 
@@ -587,14 +640,15 @@ export function App() {
             <p className="muted">{selectedFoodIds.length ? `${selectedFoodIds.length} alimenti selezionati: il motore usera solo questi.` : `Pool completo: ${foods.length} alimenti disponibili.`}</p>
             {selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Usa tutto il database</button>}
           </section>
-          <div className="actions"><button className="primary" onClick={() => generate(false)}>Genera menu</button><button className="secondary" onClick={() => generate(true)} disabled={!menu}>Rigenera</button></div>
+          <div className="actions"><button className="primary" onClick={() => generate(false)}>Genera menu</button><button className="secondary" onClick={() => generate(true)} disabled={!menu}>{menu?.lockedMealIndexes?.length ? 'Rigenera non bloccati' : 'Rigenera'}</button></div>
           {menu && <section className="card result-card">
             <div className="row-between"><div><p className="eyebrow red">{menu.status.toUpperCase()}</p><h2>Menu generato</h2></div><div className="button-group"><button className="secondary" onClick={saveCurrentMenu}>Salva</button><button className="danger" onClick={() => { setMenu(null); setStatus('Menu corrente eliminato.'); }}>Elimina</button></div></div>
             <div className="result-summary"><span>Target {menu.target.carbs.toFixed(1)}C / {menu.target.protein.toFixed(1)}P / {menu.target.fat.toFixed(1)}F</span><span>Reale {menu.actual.carbs.toFixed(1)}C / {menu.actual.protein.toFixed(1)}P / {menu.actual.fat.toFixed(1)}F</span><span>Tolleranza {menu.tolerancePercent}%</span></div>
-            {menu.meals.map((meal, index) => <article className="generated-meal" key={`${menu.id}-${index}`}>
-              <div className="row-between generated-meal-head"><div className="generated-meal-title"><strong>{meal.name}</strong><span className={meal.withinTolerance ? 'ok' : 'warn'}>{meal.workoutTiming !== 'none' ? meal.workoutTiming.toUpperCase() : ''}</span></div><button className="meal-regen-button" onClick={() => regenerateSingleMeal(index)}>Rigenera pasto</button></div>
+            {!!menu.lockedMealIndexes?.length && <div className="locked-summary"><span>🔒</span><strong>{menu.lockedMealIndexes.length} {menu.lockedMealIndexes.length === 1 ? 'pasto bloccato' : 'pasti bloccati'}</strong><small>La rigenerazione globale non li modifica.</small></div>}
+            {menu.meals.map((meal, index) => <article className={`generated-meal ${menu.lockedMealIndexes?.includes(index) ? 'generated-meal-locked' : ''}`} key={`${menu.id}-${index}`}>
+              <div className="row-between generated-meal-head"><div className="generated-meal-title"><strong>{meal.name}</strong><span className={meal.withinTolerance ? 'ok' : 'warn'}>{meal.workoutTiming !== 'none' ? meal.workoutTiming.toUpperCase() : ''}</span></div><div className="generated-meal-actions"><button className={`meal-lock-button ${menu.lockedMealIndexes?.includes(index) ? 'active' : ''}`} onClick={() => toggleGeneratedMealLock(index)}>{menu.lockedMealIndexes?.includes(index) ? '🔒 Bloccato' : '🔓 Blocca'}</button><button className="meal-regen-button" disabled={menu.lockedMealIndexes?.includes(index)} onClick={() => regenerateSingleMeal(index)}>Rigenera pasto</button></div></div>
               <small>Target {meal.target.carbs.toFixed(1)}C · {meal.target.protein.toFixed(1)}P · {meal.target.fat.toFixed(1)}F</small>
-              {meal.foods.map((portion) => <button className="food-line food-link" key={`${meal.name}-${portion.foodId}`} onClick={() => { const food = foods.find((item) => item.id === portion.foodId); if (food) setEditingFood(structuredClone(food)); }}><span>{portion.name}</span><strong>{portion.grams} g</strong></button>)}
+              {meal.foods.map((portion, foodIndex) => <div className="smart-food-row" key={`${meal.name}-${portion.foodId}-${foodIndex}`}><button className="food-line food-link smart-food-detail" onClick={() => { const food = foods.find((item) => item.id === portion.foodId); if (food) setEditingFood(structuredClone(food)); }}><span>{portion.name}</span><strong>{portion.grams} g</strong></button><button className="replace-food-button" onClick={() => setReplacementContext({ mealIndex: index, foodIndex })}>Sostituisci</button></div>)}
               <small>Reale {meal.actual.carbs.toFixed(1)}C · {meal.actual.protein.toFixed(1)}P · {meal.actual.fat.toFixed(1)}F</small>
             </article>)}
           </section>}
@@ -662,6 +716,13 @@ export function App() {
         currentDate={activeDiaryDate}
         onClose={() => { setDateModalMode(null); setCopyMealIndex(null); }}
         onConfirm={handleDateAction}
+      />
+      <FoodReplacementModal
+        open={!!replacementContext}
+        original={replacementOriginal}
+        suggestions={replacementSuggestions}
+        onClose={() => setReplacementContext(null)}
+        onSelect={applyFoodReplacement}
       />
       <FoodEditorModal
         food={editingFood}
