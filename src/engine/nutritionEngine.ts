@@ -44,6 +44,7 @@ export interface GenerateMenuOptions {
   startTolerancePercent?: number;
   dayKind?: DayKind;
   macroProfileId?: string;
+  avoidFoodIds?: string[];
 }
 
 const finite = (value: number) => (Number.isFinite(value) ? value : 0);
@@ -543,7 +544,7 @@ export const generateNutritionMenu = (options: GenerateMenuOptions): GeneratedMe
   for (const tolerancePercent of ladder) {
     const validAtLevel: GeneratedMenu[] = [];
     for (let localAttempt = 1; localAttempt <= 8; localAttempt += 1) {
-      const usedFoodIds = new Set<string>();
+      const usedFoodIds = new Set<string>(options.avoidFoodIds || []);
       const runtimeMeals: RuntimeMeal[] = [];
       for (let mealIndex = 0; mealIndex < targets.length; mealIndex += 1) {
         const target = targets[mealIndex];

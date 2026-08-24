@@ -8,6 +8,7 @@ import { TodaySummaryCard } from '@/components/TodaySummaryCard';
 import { FoodReplacementModal } from '@/components/FoodReplacementModal';
 import { RecipeEditorModal } from '@/components/RecipeEditorModal';
 import { SavedMealModal } from '@/components/SavedMealModal';
+import { WeeklyPlannerPanel } from '@/components/WeeklyPlannerPanel';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
 import { FoodPickerModal } from '@/components/FoodPickerModal';
 import { FoodLibrarySearchModal } from '@/components/FoodLibrarySearchModal';
@@ -22,6 +23,7 @@ import { applyCompletionPlan, buildSingleMealTiming, buildSmartCompletionContext
 import { buildLockedRegenerationContext, mergeUnlockedRegeneration, replaceFoodSmart, suggestEquivalentFoods, toggleMealLock, type FoodReplacementSuggestion } from '@/domain/smartEditing';
 import { buildCurrentDiaryDay, copyDiaryDay, copyMealIntoDay, emptyMealsForTiming, localDateKey, makeDiaryDay, shiftDateKey } from '@/domain/diary';
 import { appendSavedMeal, createEmptyRecipe, createSavedMealTemplate, recipeToLocalFood, validateRecipe } from '@/domain/recipes';
+import { generatedMenuToManualMeals } from '@/domain/weeklyPlanner';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode } from '@/services/barcodeService';
 import { lookupOpenFoodFacts } from '@/services/openFoodFactsService';
@@ -39,9 +41,10 @@ import type {
   SavedMealTemplate,
   TimingMeal,
   TimingTemplate,
+  WeeklyPlanResult,
 } from '@/types/nutrition';
 
-type Tab = 'menu' | 'timing' | 'foods' | 'saved';
+type Tab = 'menu' | 'week' | 'timing' | 'foods' | 'saved';
 type MenuMode = 'automatic' | 'manual';
 type DateModalMode = 'navigate' | 'copy-day' | 'copy-meal';
 
@@ -615,6 +618,30 @@ export function App() {
     setStatus('Giornata manuale azzerata.');
   };
 
+
+  const applyWeeklyPlanToDiary = (weeklyResult: WeeklyPlanResult) => {
+    const nextDays = { ...diaryDays };
+    weeklyResult.days.forEach((day) => {
+      nextDays[day.date] = makeDiaryDay(
+        day.date,
+        day.target,
+        day.timingTemplateId,
+        generatedMenuToManualMeals(day.menu, foods),
+        structuredClone(day.menu),
+      );
+    });
+    setDiaryDays(nextDays);
+    const activeDay = weeklyResult.days.find((day) => day.date === activeDiaryDate);
+    if (activeDay) {
+      setTarget({ ...activeDay.target });
+      setActiveTimingId(activeDay.timingTemplateId);
+      setManualMeals(generatedMenuToManualMeals(activeDay.menu, foods));
+      setMenu(structuredClone(activeDay.menu));
+      setMenuMode('manual');
+    }
+    setStatus(`${weeklyResult.days.length} giorni inseriti nel diario. Apri Oggi per modificarli.`);
+  };
+
   const saveMealTemplate = (name: string) => {
     if (savedMealSourceIndex == null || !manualMeals[savedMealSourceIndex]) return;
     const template = createSavedMealTemplate(name, manualMeals[savedMealSourceIndex]);
@@ -666,7 +693,7 @@ export function App() {
       <header className="hero">
         <div>
           <p className="eyebrow">BUILDER NUTRITION</p>
-          <h1>{tab === 'menu' ? 'Oggi' : 'Nutrition Engine V2'}</h1>
+          <h1>{tab === 'menu' ? 'Oggi' : tab === 'week' ? 'Settimana' : 'Nutrition Engine V2'}</h1>
           <p className="muted">Macro + timing + generazione automatica. Diario locale, nessun login.</p>
         </div>
         <div className="kcal-badge">{kcal.toFixed(0)}<small>kcal</small></div>
@@ -767,6 +794,15 @@ export function App() {
           })}
         </>}
       </>}
+
+      {tab === 'week' && <WeeklyPlannerPanel
+        foods={foods}
+        timings={timings}
+        defaultTarget={target}
+        defaultTimingId={activeTimingId}
+        selectedFoodIds={selectedFoodIds}
+        onApplyWeek={applyWeeklyPlanToDiary}
+      />}
 
       {tab === 'timing' && <section className="card">
         <div className="row-between"><h2>Gestione timing</h2><button className="primary small" onClick={() => setEditingTiming(createEmptyTiming('Nuovo timing', 5))}>Nuovo</button></div>

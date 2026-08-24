@@ -153,6 +153,41 @@ export interface Recipe {
   updatedAt: string;
 }
 
+export interface WeeklyDayConfig {
+  date: string;
+  enabled: boolean;
+  target: MacroTarget;
+  timingTemplateId: string;
+}
+
+export interface WeeklyPlannerConfig {
+  weekStart: string;
+  days: WeeklyDayConfig[];
+  updatedAt: string;
+}
+
+export interface WeeklyGeneratedDay {
+  date: string;
+  target: MacroTarget;
+  timingTemplateId: string;
+  menu: GeneratedMenu;
+}
+
+export interface WeeklyPlanResult {
+  id: string;
+  weekStart: string;
+  createdAt: string;
+  days: WeeklyGeneratedDay[];
+}
+
+export interface ShoppingListItem {
+  foodId: string;
+  name: string;
+  grams: number;
+  occurrences: number;
+  source: LocalFood['source'];
+}
+
 export interface SavedManualMenu {
   id: string;
   createdAt: string;
