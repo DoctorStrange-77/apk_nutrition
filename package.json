@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "android:add": "npx cap add android",
     "android:sync": "npm run build && npx cap sync android",
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
+    "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react-swc": "^3.11.0",
