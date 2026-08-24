@@ -104,11 +104,39 @@ export interface GeneratedMenu {
   residuals: MacroTarget;
 }
 
+export interface ManualFoodItem {
+  id: string;
+  food: LocalFood;
+  grams: number;
+}
+
+export interface ManualMeal {
+  id: string;
+  name: string;
+  items: ManualFoodItem[];
+}
+
+export interface SavedManualMenu {
+  id: string;
+  createdAt: string;
+  timingTemplateId: string;
+  target: MacroTarget;
+  actual: MacroTarget;
+  targetKcal: number;
+  actualKcal: number;
+  meals: ManualMeal[];
+}
+
 export interface NutritionAppSnapshot {
   customTimings: TimingTemplate[];
   customFoods: LocalFood[];
   savedMenus: GeneratedMenu[];
+  savedManualMenus?: SavedManualMenu[];
+  foodOverrides?: Record<string, LocalFood>;
+  deletedFoodIds?: string[];
+  manualMeals?: ManualMeal[];
   lastTarget?: MacroTarget;
   lastTimingId?: string;
+  lastMenuMode?: 'automatic' | 'manual';
   selectedFoodIds?: string[];
 }
