@@ -3,7 +3,7 @@ import {
   betaEmailToUsername,
   betaLoginErrorMessage,
   betaUsernameToEmail,
-  isAuthorizedBetaEmail,
+  isValidBetaLogin,
   isValidBetaUsername,
   normalizeBetaUsername,
 } from './betaAccess';
@@ -17,23 +17,24 @@ describe('beta access helpers', () => {
     expect(betaUsernameToEmail('tester01')).toBe('tester01@buildernutrition.app');
   });
 
-  it('accetta direttamente una email se fornita', () => {
-    expect(betaUsernameToEmail('user@example.com')).toBe('user@example.com');
+  it('usa direttamente una email reale', () => {
+    expect(betaUsernameToEmail('User@Example.com')).toBe('user@example.com');
   });
 
-  it('valida solo username semplici', () => {
+  it('valida gli username semplici', () => {
     expect(isValidBetaUsername('tester_01')).toBe(true);
     expect(isValidBetaUsername('te')).toBe(false);
     expect(isValidBetaUsername('tester 01')).toBe(false);
   });
 
-  it('ricava lo username dalla email tecnica', () => {
-    expect(betaEmailToUsername('tester01@buildernutrition.app')).toBe('tester01');
+  it('accetta username oppure email come login', () => {
+    expect(isValidBetaLogin('tester01')).toBe(true);
+    expect(isValidBetaLogin('salvatore@example.com')).toBe(true);
+    expect(isValidBetaLogin('salvatore@')).toBe(false);
   });
 
-  it('accetta solo email del dominio beta', () => {
-    expect(isAuthorizedBetaEmail('tester01@buildernutrition.app')).toBe(true);
-    expect(isAuthorizedBetaEmail('tester@gmail.com')).toBe(false);
+  it('ricava lo username dalla email tecnica', () => {
+    expect(betaEmailToUsername('tester01@buildernutrition.app')).toBe('tester01');
   });
 
   it('non espone dettagli negli errori di login', () => {

@@ -4,8 +4,7 @@ import {
   betaEmailToUsername,
   betaLoginErrorMessage,
   betaUsernameToEmail,
-  isAuthorizedBetaEmail,
-  isValidBetaUsername,
+  isValidBetaLogin,
 } from '@/domain/betaAccess';
 import { supabase } from '@/services/supabaseClient';
 
@@ -31,7 +30,7 @@ export function BetaAccessGate({ children }: Props) {
       return false;
     }
     const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user || !isAuthorizedBetaEmail(data.user.email)) {
+    if (error || !data.user) {
       await supabase.auth.signOut({ scope: 'local' });
       setUser(null);
       setGateState('signed_out');
@@ -48,13 +47,9 @@ export function BetaAccessGate({ children }: Props) {
       if (!session) {
         setUser(null);
         setGateState('signed_out');
-      } else if (isAuthorizedBetaEmail(session.user.email)) {
+      } else {
         setUser(session.user);
         setGateState('signed_in');
-      } else {
-        void supabase.auth.signOut({ scope: 'local' });
-        setUser(null);
-        setGateState('signed_out');
       }
     });
 
@@ -78,8 +73,8 @@ export function BetaAccessGate({ children }: Props) {
     event.preventDefault();
     setMessage('');
     const normalized = username.trim().toLowerCase();
-    if (!isValidBetaUsername(normalized)) {
-      setMessage('Inserisci uno username valido.');
+    if (!isValidBetaLogin(normalized)) {
+      setMessage('Inserisci uno username o una email validi.');
       return;
     }
     if (!password) {
@@ -92,7 +87,7 @@ export function BetaAccessGate({ children }: Props) {
       email: betaUsernameToEmail(normalized),
       password,
     });
-    if (error || !data.user || !isAuthorizedBetaEmail(data.user.email)) {
+    if (error || !data.user) {
       if (data.user) await supabase.auth.signOut();
       setMessage(betaLoginErrorMessage());
       setBusy(false);
@@ -122,11 +117,11 @@ export function BetaAccessGate({ children }: Props) {
       <p className="eyebrow red">ACCESSO BETA</p>
       <h1>Builder Nutrition</h1>
       <p className="beta-subtitle">Inserisci le credenziali ricevute per accedere alla versione di prova.</p>
-      <label className="beta-field"><span>Username</span><input autoCapitalize="none" autoCorrect="off" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="tester01" /></label>
+      <label className="beta-field"><span>Username o email</span><input autoCapitalize="none" autoCorrect="off" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="tester01 o nome@email.it" /></label>
       <label className="beta-field"><span>Password</span><div className="beta-password"><input type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /><button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? 'Nascondi' : 'Mostra'}</button></div></label>
       {!!message && <div className="beta-error">{message}</div>}
       <button className="primary beta-login-button" type="submit" disabled={busy}>{busy ? 'Accesso…' : 'Accedi'}</button>
-      <small className="beta-version">Builder Nutrition 1.0.2 Beta</small>
+      <small className="beta-version">Builder Nutrition 1.0.3 Beta</small>
     </form></div>;
   }
 

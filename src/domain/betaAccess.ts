@@ -10,6 +10,14 @@ export function isValidBetaUsername(value: string): boolean {
   return /^[a-z0-9._-]+$/.test(username);
 }
 
+export function isValidBetaLogin(value: string): boolean {
+  const normalized = normalizeBetaUsername(value);
+  if (normalized.includes('@')) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
+  }
+  return isValidBetaUsername(normalized);
+}
+
 export function betaUsernameToEmail(value: string): string {
   const username = normalizeBetaUsername(value);
   if (username.includes('@')) return username;
@@ -25,9 +33,4 @@ export function betaEmailToUsername(email?: string | null): string {
 
 export function betaLoginErrorMessage(): string {
   return 'Username o password non validi.';
-}
-
-export function isAuthorizedBetaEmail(email?: string | null): boolean {
-  if (!email) return false;
-  return email.trim().toLowerCase().endsWith(`@${BETA_EMAIL_DOMAIN}`);
 }
