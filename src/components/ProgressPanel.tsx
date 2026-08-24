@@ -18,6 +18,7 @@ import type { DiaryDay, MacroTarget } from '@/types/nutrition';
 
 const CHECKINS_KEY = 'progress-checkins-v1';
 const SETTINGS_KEY = 'progress-settings-v1';
+const APPLIED_KEY = 'progress-last-applied-date-v1';
 
 const goalLabel: Record<ProgressGoal, string> = {
   cut: 'Cut',
@@ -73,13 +74,16 @@ export function ProgressPanel({ diaryDays, target, onApplyTarget }: Props) {
   const [weight, setWeight] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState('');
+  const [lastAppliedDate, setLastAppliedDate] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       const savedEntries = await getLocalValue<ProgressCheckIn[]>(CHECKINS_KEY, []);
       const savedSettings = await getLocalValue<ProgressSettings>(SETTINGS_KEY, DEFAULT_PROGRESS_SETTINGS);
+      const savedAppliedDate = await getLocalValue<string | null>(APPLIED_KEY, null);
       setEntries(normalizeCheckIns(savedEntries));
       setSettings({ ...DEFAULT_PROGRESS_SETTINGS, ...savedSettings });
+      setLastAppliedDate(savedAppliedDate);
       setLoaded(true);
     })();
   }, []);
@@ -97,6 +101,7 @@ export function ProgressPanel({ diaryDays, target, onApplyTarget }: Props) {
   const trend = useMemo(() => calculateWeightTrend(entries), [entries]);
   const analysisDate = entries.length ? entries[entries.length - 1].date : localDateKey();
   const adherence = useMemo(() => calculateDiaryAdherence(diaryDays, analysisDate, 7), [diaryDays, analysisDate]);
+  const alreadyAdjusted = lastAppliedDate === analysisDate;
   const recommendation = useMemo(
     () => buildTargetRecommendation(target, trend, adherence, settings),
     [target, trend, adherence, settings],
@@ -163,7 +168,7 @@ export function ProgressPanel({ diaryDays, target, onApplyTarget }: Props) {
       <p className="progress-recommendation-copy">{recommendation.reason}</p>
       <div className="progress-rule-row"><span>Aderenza minima</span><label><input type="number" min="70" max="100" step="1" value={settings.minAdherencePct} onChange={(event) => setSettings((current) => ({ ...current, minAdherencePct: Math.max(70, Math.min(100, Number(event.target.value) || 85)) }))} /><b>%</b></label></div>
       <div className="progress-rule-row"><span>Passo di modifica</span><label><input type="number" min="2" max="7" step="1" value={settings.adjustmentPct} onChange={(event) => setSettings((current) => ({ ...current, adjustmentPct: Math.max(2, Math.min(7, Number(event.target.value) || 5)) }))} /><b>%</b></label></div>
-      {recommendation.proposedTarget && <>
+      {recommendation.proposedTarget && !alreadyAdjusted && <>
         <div className="progress-target-compare">
           <div><small>ATTUALE</small><strong>{target.carbs}C · {target.protein}P · {target.fat}F</strong><span>{kcalFromMacros(target).toFixed(0)} kcal</span></div>
           <b>→</b>
@@ -171,9 +176,12 @@ export function ProgressPanel({ diaryDays, target, onApplyTarget }: Props) {
         </div>
         <button className="primary progress-apply-button" onClick={() => {
           onApplyTarget(recommendation.proposedTarget!);
-          setMessage('Nuovo target applicato. Il Nutrition Engine userà i macro aggiornati dalla prossima generazione.');
+          setLastAppliedDate(analysisDate);
+          void setLocalValue(APPLIED_KEY, analysisDate);
+          setMessage('Nuovo target applicato. Builder aspetterà un nuovo check-in prima di proporre un’altra correzione.');
         }}>Conferma e applica target</button>
       </>}
+      {recommendation.proposedTarget && alreadyAdjusted && <div className="status progress-local-status">Correzione già applicata su questo check-in. Inserisci una nuova pesata prima di rivalutare il target.</div>}
     </section>
 
     {!!entries.length && <section className="card progress-history-card">

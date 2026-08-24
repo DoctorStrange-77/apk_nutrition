@@ -9,6 +9,7 @@ import { FoodReplacementModal } from '@/components/FoodReplacementModal';
 import { RecipeEditorModal } from '@/components/RecipeEditorModal';
 import { SavedMealModal } from '@/components/SavedMealModal';
 import { WeeklyPlannerPanel } from '@/components/WeeklyPlannerPanel';
+import { ProgressPanel } from '@/components/ProgressPanel';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
 import { FoodPickerModal } from '@/components/FoodPickerModal';
 import { FoodLibrarySearchModal } from '@/components/FoodLibrarySearchModal';
@@ -44,7 +45,7 @@ import type {
   WeeklyPlanResult,
 } from '@/types/nutrition';
 
-type Tab = 'menu' | 'week' | 'timing' | 'foods' | 'saved';
+type Tab = 'menu' | 'week' | 'progress' | 'timing' | 'foods' | 'saved';
 type MenuMode = 'automatic' | 'manual';
 type DateModalMode = 'navigate' | 'copy-day' | 'copy-meal';
 
@@ -693,7 +694,7 @@ export function App() {
       <header className="hero">
         <div>
           <p className="eyebrow">BUILDER NUTRITION</p>
-          <h1>{tab === 'menu' ? 'Oggi' : tab === 'week' ? 'Settimana' : 'Nutrition Engine V2'}</h1>
+          <h1>{tab === 'menu' ? 'Oggi' : tab === 'week' ? 'Settimana' : tab === 'progress' ? 'Progressi' : 'Nutrition Engine V2'}</h1>
           <p className="muted">Macro + timing + generazione automatica. Diario locale, nessun login.</p>
         </div>
         <div className="kcal-badge">{kcal.toFixed(0)}<small>kcal</small></div>
@@ -802,6 +803,16 @@ export function App() {
         defaultTimingId={activeTimingId}
         selectedFoodIds={selectedFoodIds}
         onApplyWeek={applyWeeklyPlanToDiary}
+      />}
+
+
+      {tab === 'progress' && <ProgressPanel
+        diaryDays={{ ...diaryDays, [activeDiaryDate]: currentDiarySnapshot() }}
+        target={target}
+        onApplyTarget={(nextTarget) => {
+          setTarget({ ...nextTarget });
+          setStatus(`Target aggiornato: ${nextTarget.carbs}C / ${nextTarget.protein}P / ${nextTarget.fat}F.`);
+        }}
       />}
 
       {tab === 'timing' && <section className="card">
