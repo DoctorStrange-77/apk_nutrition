@@ -55,7 +55,10 @@ export interface LocalFood {
   grammiMax?: number;
   mainSourceThreshold?: number;
   suitable: MealTag[];
-  source: 'builder' | 'manual' | 'barcode' | 'external';
+  source: 'builder' | 'manual' | 'barcode' | 'external' | 'recipe';
+  servingName?: string;
+  servingGrams?: number;
+  recipeId?: string;
   glycemicIndex?: 'low' | 'medium' | 'high';
   digestibility?: 'easy' | 'medium' | 'heavy';
   digestibilityScore?: number;
@@ -126,6 +129,30 @@ export interface DiaryDay {
   updatedAt: string;
 }
 
+export interface SavedMealTemplate {
+  id: string;
+  name: string;
+  createdAt: string;
+  items: ManualFoodItem[];
+}
+
+export interface RecipeIngredient {
+  id: string;
+  food: LocalFood;
+  grams: number;
+}
+
+export interface Recipe {
+  id: string;
+  name: string;
+  ingredients: RecipeIngredient[];
+  cookedWeightGrams: number;
+  servingName: string;
+  servingGrams: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SavedManualMenu {
   id: string;
   createdAt: string;
@@ -153,4 +180,6 @@ export interface NutritionAppSnapshot {
   activeDiaryDate?: string;
   favoriteFoodIds?: string[];
   recentFoodIds?: string[];
+  savedMealTemplates?: SavedMealTemplate[];
+  recipes?: Recipe[];
 }
