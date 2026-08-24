@@ -213,7 +213,7 @@ export function App() {
 
   const scanBarcode = async () => {
     try {
-      setStatus('Apertura scannerâ€¦');
+      setStatus('Apertura scanner...');
       const barcode = await scanProductBarcode();
       const localFood = foods.find((food) => food.barcode === barcode);
       if (localFood) {
@@ -222,14 +222,14 @@ export function App() {
         return;
       }
 
-      setStatus(`Barcode ${barcode} letto. Ricerca su Open Food Factsâ€¦`);
+      setStatus(`Barcode ${barcode} letto. Ricerca su Open Food Facts...`);
       try {
         const externalFood = await lookupOpenFoodFacts(barcode);
         if (externalFood) {
           setCustomFoods((current) => [externalFood, ...current.filter((food) => food.barcode !== barcode)]);
           setFoodSearch(externalFood.name);
           setManualFood({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
-          setStatus(`Trovato online e salvato sul dispositivo: ${externalFood.name}${externalFood.brand ? ` Â· ${externalFood.brand}` : ''}`);
+          setStatus(`Trovato online e salvato sul dispositivo: ${externalFood.name}${externalFood.brand ? ` - ${externalFood.brand}` : ''}`);
           return;
         }
 
@@ -239,7 +239,7 @@ export function App() {
         setManualFood((current) => ({ ...current, barcode }));
         const lookupText = String(lookupError);
         setStatus(lookupText.includes('OPEN_FOOD_FACTS_TIMEOUT') || lookupText.includes('Failed to fetch')
-          ? `Barcode ${barcode} letto, ma la ricerca online non Ã¨ disponibile. Riprova con connessione internet oppure inseriscilo manualmente.`
+          ? `Barcode ${barcode} letto, ma la ricerca online non e disponibile. Riprova con connessione internet oppure inseriscilo manualmente.`
           : `Barcode ${barcode} letto. Open Food Facts: ${lookupText}`);
       }
     } catch (error) {
