@@ -8,8 +8,8 @@ type Props = {
 const items: Array<{ id: Tab; label: string; icon: JSX.Element }> = [
   {
     id: 'menu',
-    label: 'Menu',
-    icon: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>,
+    label: 'Oggi',
+    icon: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4M16 3v4M4 9h16"/><path d="M8 13h3M13 13h3M8 17h3"/></svg>,
   },
   {
     id: 'timing',
