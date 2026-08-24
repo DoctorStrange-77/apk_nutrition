@@ -1,0 +1,60 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f8fafc;
+  background: #0b1120;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #0b1120; }
+button, input { font: inherit; }
+
+.app-shell {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: max(24px, env(safe-area-inset-top)) 18px max(32px, env(safe-area-inset-bottom));
+}
+
+header { margin-bottom: 20px; }
+.eyebrow { margin: 0 0 6px; font-size: 12px; font-weight: 800; letter-spacing: .16em; }
+h1 { margin: 0 0 8px; font-size: clamp(28px, 7vw, 42px); }
+h2 { margin: 0 0 14px; font-size: 20px; }
+.muted { color: #94a3b8; }
+
+.card {
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid #26334a;
+  border-radius: 18px;
+  background: #111827;
+  box-shadow: 0 12px 30px rgba(0,0,0,.18);
+}
+
+.macro-grid { display: grid; gap: 12px; margin-bottom: 14px; }
+.macro-grid label { display: grid; grid-template-columns: 1fr 90px 18px; align-items: center; gap: 8px; }
+input {
+  width: 100%;
+  padding: 10px;
+  color: #f8fafc;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 10px;
+}
+
+.meal-list { display: grid; gap: 9px; }
+.meal-row {
+  display: grid;
+  grid-template-columns: 1.5fr repeat(3, .8fr);
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 12px;
+  background: #0f172a;
+  font-size: 14px;
+}
+.pending { border-style: dashed; }
+
+@media (max-width: 560px) {
+  .meal-row { grid-template-columns: 1fr; }
+}
