@@ -96,6 +96,7 @@ export interface GeneratedMenu {
   tolerancePercent: number;
   generationMode: 'full_pool' | 'selected_foods';
   selectedFoodIds?: string[];
+  lockedMealIndexes?: number[];
   meals: GeneratedMeal[];
   target: MacroTarget;
   actual: MacroTarget;
