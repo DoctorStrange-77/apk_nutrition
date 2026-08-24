@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BottomNav } from '@/components/BottomNav';
+import { DiaryDateBar } from '@/components/DiaryDateBar';
+import { DateActionModal } from '@/components/DateActionModal';
 import { SmartDayCard } from '@/components/SmartDayCard';
 import { CompletionPlanCard } from '@/components/CompletionPlanCard';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
@@ -13,11 +15,13 @@ import { BUILT_IN_TIMINGS } from '@/data/builtInTimings';
 import { calculateMealTargets, createEmptyTiming, timingTotals, validateTimingTemplate } from '@/domain/timing';
 import { kcalFromMacros, macrosForManualDay, macrosForManualItem, macrosForManualMeal } from '@/domain/manualMenu';
 import { applyCompletionPlan, buildSingleMealTiming, buildSmartCompletionContext, completionNeeded, replaceGeneratedMeal } from '@/domain/smartCompletion';
+import { buildCurrentDiaryDay, copyDiaryDay, copyMealIntoDay, emptyMealsForTiming, localDateKey, makeDiaryDay, shiftDateKey } from '@/domain/diary';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode } from '@/services/barcodeService';
 import { lookupOpenFoodFacts } from '@/services/openFoodFactsService';
 import { getLocalValue, initLocalDatabase, setLocalValue } from '@/storage/localDatabase';
 import type {
+  DiaryDay,
   FoodCategory,
   GeneratedMenu,
   LocalFood,
@@ -31,6 +35,7 @@ import type {
 
 type Tab = 'menu' | 'timing' | 'foods' | 'saved';
 type MenuMode = 'automatic' | 'manual';
+type DateModalMode = 'navigate' | 'copy-day' | 'copy-meal';
 
 const DEFAULT_TARGET: MacroTarget = { carbs: 300, protein: 180, fat: 60 };
 const EMPTY_SNAPSHOT: NutritionAppSnapshot = { customTimings: [], customFoods: [], savedMenus: [] };
@@ -82,7 +87,11 @@ export function App() {
   const [savedMenus, setSavedMenus] = useState<GeneratedMenu[]>([]);
   const [savedManualMenus, setSavedManualMenus] = useState<SavedManualMenu[]>([]);
   const [manualMeals, setManualMeals] = useState<ManualMeal[]>([]);
+  const [diaryDays, setDiaryDays] = useState<Record<string, DiaryDay>>({});
+  const [activeDiaryDate, setActiveDiaryDate] = useState(localDateKey());
   const [selectedFoodIds, setSelectedFoodIds] = useState<string[]>([]);
+  const [favoriteFoodIds, setFavoriteFoodIds] = useState<string[]>([]);
+  const [recentFoodIds, setRecentFoodIds] = useState<string[]>([]);
   const [activeTimingId, setActiveTimingId] = useState('omogeneo');
   const [menu, setMenu] = useState<GeneratedMenu | null>(null);
   const [completionPlan, setCompletionPlan] = useState<GeneratedMenu | null>(null);
@@ -98,6 +107,8 @@ export function App() {
   const [showFoodSearch, setShowFoodSearch] = useState(false);
   const [showPoolSearch, setShowPoolSearch] = useState(false);
   const [showTimingSelect, setShowTimingSelect] = useState(false);
+  const [dateModalMode, setDateModalMode] = useState<DateModalMode | null>(null);
+  const [copyMealIndex, setCopyMealIndex] = useState<number | null>(null);
   const [manualFood, setManualFood] = useState({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
 
   const timings = useMemo(() => [...BUILT_IN_TIMINGS, ...customTimings], [customTimings]);
@@ -118,8 +129,19 @@ export function App() {
   }, [foods, foodSearch]);
   const manualPickerFoods = useMemo(() => {
     const query = manualPickerSearch.trim().toLowerCase();
-    return foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.barcode || ''}`.toLowerCase().includes(query)).slice(0, 40);
-  }, [foods, manualPickerSearch]);
+    const filtered = foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.barcode || ''}`.toLowerCase().includes(query));
+    if (query) return filtered.slice(0, 60);
+    const favoriteRank = new Map(favoriteFoodIds.map((id, index) => [id, index]));
+    const recentRank = new Map(recentFoodIds.map((id, index) => [id, index]));
+    return [...filtered].sort((a, b) => {
+      const af = favoriteRank.has(a.id) ? favoriteRank.get(a.id)! : 9999;
+      const bf = favoriteRank.has(b.id) ? favoriteRank.get(b.id)! : 9999;
+      if (af !== bf) return af - bf;
+      const ar = recentRank.has(a.id) ? recentRank.get(a.id)! : 9999;
+      const br = recentRank.has(b.id) ? recentRank.get(b.id)! : 9999;
+      return ar !== br ? ar - br : a.name.localeCompare(b.name);
+    }).slice(0, 60);
+  }, [foods, manualPickerSearch, favoriteFoodIds, recentFoodIds]);
 
   useEffect(() => {
     void (async () => {
@@ -132,11 +154,22 @@ export function App() {
         setDeletedFoodIds(snapshot.deletedFoodIds || []);
         setSavedMenus(snapshot.savedMenus || []);
         setSavedManualMenus(snapshot.savedManualMenus || []);
-        setManualMeals(snapshot.manualMeals || []);
-        setTarget(snapshot.lastTarget || DEFAULT_TARGET);
-        setActiveTimingId(snapshot.lastTimingId || 'omogeneo');
+        const today = localDateKey();
+        const existingDays = snapshot.diaryDays || {};
+        const legacyMeals = snapshot.manualMeals || [];
+        const initialTarget = snapshot.lastTarget || DEFAULT_TARGET;
+        const initialTimingId = snapshot.lastTimingId || 'omogeneo';
+        const initialDay = existingDays[today] || makeDiaryDay(today, initialTarget, initialTimingId, legacyMeals, null);
+        setDiaryDays({ ...existingDays, [today]: initialDay });
+        setActiveDiaryDate(today);
+        setManualMeals(structuredClone(initialDay.meals));
+        setTarget({ ...initialDay.target });
+        setActiveTimingId(initialDay.timingTemplateId || initialTimingId);
+        setMenu(initialDay.generatedMenu ? structuredClone(initialDay.generatedMenu) : null);
         setMenuMode(snapshot.lastMenuMode || 'automatic');
         setSelectedFoodIds(snapshot.selectedFoodIds || []);
+        setFavoriteFoodIds(snapshot.favoriteFoodIds || []);
+        setRecentFoodIds(snapshot.recentFoodIds || []);
       } catch (error) {
         setStatus(`Archivio locale: ${String(error)}`);
       } finally {
@@ -154,21 +187,75 @@ export function App() {
 
   useEffect(() => {
     if (!ready) return;
+    const currentDay = buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu);
+    const persistedDays = { ...diaryDays, [activeDiaryDate]: currentDay };
     const snapshot: NutritionAppSnapshot = {
-      customTimings,
-      customFoods,
-      foodOverrides,
-      deletedFoodIds,
-      savedMenus,
-      savedManualMenus,
-      manualMeals,
-      lastTarget: target,
-      lastTimingId: activeTimingId,
-      lastMenuMode: menuMode,
-      selectedFoodIds,
+      customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus,
+      manualMeals, lastTarget: target, lastTimingId: activeTimingId, lastMenuMode: menuMode, selectedFoodIds,
+      diaryDays: persistedDays, activeDiaryDate, favoriteFoodIds, recentFoodIds,
     };
     void setLocalValue('snapshot', snapshot).catch((error) => setStatus(`Salvataggio locale: ${String(error)}`));
-  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds]);
+  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds, diaryDays, activeDiaryDate, menu, favoriteFoodIds, recentFoodIds]);
+
+  const currentDiarySnapshot = () =>
+    buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu);
+
+  const openDiaryDate = (nextDate: string) => {
+    if (!nextDate || nextDate === activeDiaryDate) { setDateModalMode(null); return; }
+    const currentDay = currentDiarySnapshot();
+    const nextDays = { ...diaryDays, [activeDiaryDate]: currentDay };
+    let destination = nextDays[nextDate];
+    if (!destination) {
+      const timing = timings.find((item) => item.id === activeTimingId) || activeTiming;
+      destination = makeDiaryDay(nextDate, target, activeTimingId, timing ? emptyMealsForTiming(timing) : [], null);
+      nextDays[nextDate] = destination;
+    }
+    const nextTimingId = timings.some((item) => item.id === destination.timingTemplateId) ? destination.timingTemplateId : 'omogeneo';
+    setDiaryDays(nextDays);
+    setActiveDiaryDate(nextDate);
+    setTarget({ ...destination.target });
+    setActiveTimingId(nextTimingId);
+    setManualMeals(structuredClone(destination.meals));
+    setMenu(destination.generatedMenu ? structuredClone(destination.generatedMenu) : null);
+    setCompletionPlan(null);
+    setAttemptSeed(0);
+    setDateModalMode(null);
+    setStatus(`Diario aperto: ${nextDate}.`);
+  };
+
+  const copyActiveDayTo = (destinationDate: string) => {
+    if (!destinationDate || destinationDate === activeDiaryDate) {
+      setStatus('Scegli una data diversa per copiare la giornata.');
+      setDateModalMode(null);
+      return;
+    }
+    const source = currentDiarySnapshot();
+    const copied = copyDiaryDay(source, destinationDate);
+    setDiaryDays((current) => ({ ...current, [activeDiaryDate]: source, [destinationDate]: copied }));
+    setDateModalMode(null);
+    setStatus(`Giornata copiata su ${destinationDate}.`);
+  };
+
+  const copyActiveMealTo = (destinationDate: string) => {
+    if (copyMealIndex == null || !manualMeals[copyMealIndex]) return;
+    const sourceDay = currentDiarySnapshot();
+    const timing = timings.find((item) => item.id === activeTimingId) || activeTiming;
+    const base = destinationDate === activeDiaryDate
+      ? sourceDay
+      : diaryDays[destinationDate] || makeDiaryDay(destinationDate, target, activeTimingId, timing ? emptyMealsForTiming(timing) : [], null);
+    const copied = copyMealIntoDay(base, manualMeals[copyMealIndex], copyMealIndex);
+    setDiaryDays((current) => ({ ...current, [activeDiaryDate]: sourceDay, [destinationDate]: copied }));
+    if (destinationDate === activeDiaryDate) setManualMeals(structuredClone(copied.meals));
+    setCopyMealIndex(null);
+    setDateModalMode(null);
+    setStatus(`Pasto copiato su ${destinationDate}.`);
+  };
+
+  const handleDateAction = (date: string) => {
+    if (dateModalMode === 'navigate') openDiaryDate(date);
+    else if (dateModalMode === 'copy-day') copyActiveDayTo(date);
+    else if (dateModalMode === 'copy-meal') copyActiveMealTo(date);
+  };
 
   const generate = (regenerate = false) => {
     if (!activeTiming) return;
@@ -408,6 +495,7 @@ export function App() {
 
   const addFoodToManualMeal = (mealId: string, food: LocalFood) => {
     setCompletionPlan(null);
+    setRecentFoodIds((current) => [food.id, ...current.filter((id) => id !== food.id)].slice(0, 30));
     const grams = Math.max(1, food.grammiMin || 100);
     setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: [...meal.items, { id: `manual-item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, food: structuredClone(food), grams }] } : meal));
     setManualPickerMealId(null);
@@ -446,6 +534,14 @@ export function App() {
       {status && <div className="status" role="status">{status}</div>}
 
       {tab === 'menu' && <>
+        <DiaryDateBar
+          date={activeDiaryDate}
+          onPrevious={() => openDiaryDate(shiftDateKey(activeDiaryDate, -1))}
+          onNext={() => openDiaryDate(shiftDateKey(activeDiaryDate, 1))}
+          onToday={() => openDiaryDate(localDateKey())}
+          onPickDate={() => setDateModalMode('navigate')}
+          onCopyDay={() => setDateModalMode('copy-day')}
+        />
         <div className="mode-switch">
           <button className={menuMode === 'automatic' ? 'active' : ''} onClick={() => setMenuMode('automatic')}>Composizione automatica</button>
           <button className={menuMode === 'manual' ? 'active' : ''} onClick={() => setMenuMode('manual')}>Composizione manuale</button>
@@ -520,7 +616,7 @@ export function App() {
             const actual = macrosForManualMeal(meal);
             const mealTarget = mealTargets[mealIndex];
             return <section className="card manual-meal" key={meal.id}>
-              <div className="row-between"><div><h2>{meal.name}</h2>{mealTarget && <small className="meal-subtitle">Target {mealTarget.carbs.toFixed(0)}C · {mealTarget.protein.toFixed(0)}P · {mealTarget.fat.toFixed(0)}F</small>}</div><button className="add-food-button" onClick={() => { setManualPickerMealId(meal.id); setManualPickerSearch(''); }}>+ Alimento</button></div>
+              <div className="row-between"><div><h2>{meal.name}</h2>{mealTarget && <small className="meal-subtitle">Target {mealTarget.carbs.toFixed(0)}C · {mealTarget.protein.toFixed(0)}P · {mealTarget.fat.toFixed(0)}F</small>}</div><div className="meal-actions-inline"><button className="meal-copy-button" onClick={() => { setCopyMealIndex(mealIndex); setDateModalMode('copy-meal'); }}>Copia</button><button className="add-food-button" onClick={() => { setManualPickerMealId(meal.id); setManualPickerSearch(''); }}>+ Alimento</button></div></div>
               {!meal.items.length && <p className="empty-meal">Nessun alimento inserito.</p>}
               {meal.items.map((item) => {
                 const itemMacros = macrosForManualItem(item);
@@ -556,10 +652,17 @@ export function App() {
       {tab === 'saved' && <section className="card">
         <div className="row-between"><h2>Menu salvati</h2><span className="saved-count">{savedMenus.length + savedManualMenus.length}</span></div>
         {!savedMenus.length && !savedManualMenus.length && <p className="muted">Nessun menu salvato.</p>}
-        {!!savedMenus.length && <><h3 className="section-label">AUTOMATICI</h3>{savedMenus.map((saved) => <div className="saved-row" key={saved.id}><button className="list-main" onClick={() => { setMenu(saved); setActiveTimingId(saved.timingTemplateId); setMenuMode('automatic'); setTab('menu'); }}><strong>{new Date(saved.createdAt).toLocaleString()}</strong><span>{saved.status} · {saved.targetKcal.toFixed(0)} kcal</span></button><button className="danger" onClick={() => setSavedMenus((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button></div>)}</>}
+        {!!savedMenus.length && <><h3 className="section-label">AUTOMATICI</h3>{savedMenus.map((saved) => <div className="saved-row" key={saved.id}><button className="list-main" onClick={() => { setTarget(saved.target); setMenu(saved); setActiveTimingId(saved.timingTemplateId); setMenuMode('automatic'); setTab('menu'); }}><strong>{new Date(saved.createdAt).toLocaleString()}</strong><span>{saved.status} · {saved.targetKcal.toFixed(0)} kcal</span></button><button className="danger" onClick={() => setSavedMenus((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button></div>)}</>}
         {!!savedManualMenus.length && <><h3 className="section-label">MANUALI</h3>{savedManualMenus.map((saved) => <div className="saved-row" key={saved.id}><button className="list-main" onClick={() => { setTarget(saved.target); setManualMeals(structuredClone(saved.meals)); setActiveTimingId(saved.timingTemplateId); setMenuMode('manual'); setTab('menu'); }}><strong>{new Date(saved.createdAt).toLocaleString()}</strong><span>manuale · {saved.actualKcal.toFixed(0)} / {saved.targetKcal.toFixed(0)} kcal</span></button><button className="danger" onClick={() => setSavedManualMenus((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button></div>)}</>}
       </section>}
 
+      <DateActionModal
+        open={!!dateModalMode}
+        mode={dateModalMode || 'navigate'}
+        currentDate={activeDiaryDate}
+        onClose={() => { setDateModalMode(null); setCopyMealIndex(null); }}
+        onConfirm={handleDateAction}
+      />
       <FoodEditorModal
         food={editingFood}
         onChange={setEditingFood}
@@ -584,6 +687,9 @@ export function App() {
         foods={manualPickerFoods}
         query={manualPickerSearch}
         onQueryChange={setManualPickerSearch}
+        favoriteIds={favoriteFoodIds}
+        recentIds={recentFoodIds}
+        onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])}
         onClose={() => setManualPickerMealId(null)}
         onSelect={(food) => {
           if (manualPickerMealId) addFoodToManualMeal(manualPickerMealId, food);
