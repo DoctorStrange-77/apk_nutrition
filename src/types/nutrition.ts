@@ -38,6 +38,14 @@ export interface TimingTemplate {
   updatedAt?: string;
 }
 
+export interface FoodPortionUnit {
+  id: string;
+  name: string;
+  grams: number;
+}
+
+export type NutritionWeightBasis = 'raw' | 'cooked';
+
 export interface LocalFood {
   id: string;
   name: string;
@@ -58,6 +66,9 @@ export interface LocalFood {
   source: 'builder' | 'manual' | 'barcode' | 'external' | 'recipe';
   servingName?: string;
   servingGrams?: number;
+  portionUnits?: FoodPortionUnit[];
+  nutritionWeightBasis?: NutritionWeightBasis;
+  cookedWeightFactor?: number;
   recipeId?: string;
   glycemicIndex?: 'low' | 'medium' | 'high';
   digestibility?: 'easy' | 'medium' | 'heavy';
@@ -112,6 +123,7 @@ export interface ManualFoodItem {
   id: string;
   food: LocalFood;
   grams: number;
+  quantityMode?: string;
 }
 
 export interface ManualMeal {
