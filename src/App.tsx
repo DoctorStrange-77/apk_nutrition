@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { BottomNav } from '@/components/BottomNav';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
 import { FoodPickerModal } from '@/components/FoodPickerModal';
 import { NewFoodModal } from '@/components/NewFoodModal';
@@ -369,13 +370,6 @@ export function App() {
         <div className="kcal-badge">{kcal.toFixed(0)}<small>kcal</small></div>
       </header>
 
-      <nav className="tabs">
-        <button className={tab === 'menu' ? 'active' : ''} onClick={() => setTab('menu')}>Menu</button>
-        <button className={tab === 'timing' ? 'active' : ''} onClick={() => setTab('timing')}>Timing</button>
-        <button className={tab === 'foods' ? 'active' : ''} onClick={() => setTab('foods')}>Alimenti</button>
-        <button className={tab === 'saved' ? 'active' : ''} onClick={() => setTab('saved')}>Salvati</button>
-      </nav>
-
       {status && <div className="status" role="status">{status}</div>}
 
       {tab === 'menu' && <>
@@ -512,6 +506,7 @@ export function App() {
         onClose={() => setShowNewFood(false)}
         onSave={addManualFood}
       />
+      <BottomNav active={tab} onChange={setTab} />
 
     </main>
   );

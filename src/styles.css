@@ -340,3 +340,53 @@ input:focus,select:focus { border-color:#d32932; box-shadow:0 0 0 3px rgba(211,4
   .foods-heading .button-group button { padding:9px 10px; }
   .food-list { max-height:none; }
 }
+
+/* Bottom navigation */
+.app-shell { padding-bottom:150px; }
+.bottom-nav {
+  position:fixed;
+  left:50%;
+  bottom:max(10px, env(safe-area-inset-bottom));
+  transform:translateX(-50%);
+  width:min(880px,calc(100% - 18px));
+  z-index:120;
+  padding:7px;
+  border:1px solid rgba(255,255,255,.11);
+  border-radius:26px;
+  background:linear-gradient(180deg,rgba(18,18,21,.88),rgba(5,5,7,.96));
+  backdrop-filter:blur(22px) saturate(145%);
+  -webkit-backdrop-filter:blur(22px) saturate(145%);
+  box-shadow:0 18px 55px rgba(0,0,0,.55),0 0 0 1px rgba(180,20,28,.10),inset 0 1px 0 rgba(255,255,255,.08);
+}
+.bottom-nav-inner { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+.bottom-nav-item {
+  min-width:0;
+  min-height:72px;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  gap:5px;
+  padding:8px 5px;
+  border:1px solid transparent;
+  border-radius:20px;
+  background:transparent;
+  color:#999ba1;
+  box-shadow:none;
+  transition:transform .16s ease,background .16s ease,color .16s ease,border-color .16s ease;
+}
+.bottom-nav-item:active { transform:scale(.97); }
+.bottom-nav-item.active {
+  color:#fff;
+  border-color:rgba(255,93,100,.85);
+  background:linear-gradient(155deg,#ff3541 0%,#df1721 48%,#9d0910 100%);
+  box-shadow:0 10px 26px rgba(208,18,28,.34),inset 0 1px 0 rgba(255,255,255,.24);
+}
+.bottom-nav-icon { width:27px; height:27px; display:grid; place-items:center; }
+.bottom-nav-icon svg { width:26px; height:26px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+.bottom-nav-label { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.77rem; font-weight:720; letter-spacing:.01em; }
+@media (max-width:620px) {
+  .bottom-nav { width:calc(100% - 14px); bottom:max(7px, env(safe-area-inset-bottom)); border-radius:24px; padding:6px; }
+  .bottom-nav-item { min-height:68px; border-radius:18px; gap:4px; }
+  .bottom-nav-icon,.bottom-nav-icon svg { width:25px; height:25px; }
+  .bottom-nav-label { font-size:.74rem; }
+}
