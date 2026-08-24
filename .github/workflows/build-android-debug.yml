@@ -3,6 +3,8 @@ name: Build Android Debug APK
 on:
   push:
     branches: [develop]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -16,7 +18,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Setup Java
         uses: actions/setup-java@v4

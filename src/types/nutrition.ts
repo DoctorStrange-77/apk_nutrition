@@ -1,5 +1,7 @@
 export type DayKind = 'workout' | 'off' | 'recovery';
 export type MealWorkoutTiming = 'pre' | 'post' | 'none';
+export type MealTag = 'breakfast' | 'snack' | 'lunch' | 'dinner' | 'prenanna';
+export type FoodCategory = 'carb' | 'protein' | 'fat' | 'mixed';
 
 export interface MacroTarget {
   carbs: number;
@@ -41,16 +43,27 @@ export interface LocalFood {
   name: string;
   brand?: string;
   barcode?: string;
-  category: 'carb' | 'protein' | 'fat' | 'mixed';
+  category: FoodCategory;
   subcategory?: string;
   carbs: number;
   protein: number;
   fat: number;
   fiber?: number;
+  simpleSugars?: number;
+  sodium?: number;
   grammiMin?: number;
   grammiMax?: number;
-  suitable: Array<'breakfast' | 'snack' | 'lunch' | 'dinner' | 'prenanna'>;
+  mainSourceThreshold?: number;
+  suitable: MealTag[];
   source: 'builder' | 'manual' | 'barcode' | 'external';
+  glycemicIndex?: 'low' | 'medium' | 'high';
+  digestibility?: 'easy' | 'medium' | 'heavy';
+  digestibilityScore?: number;
+  satietyScore?: number;
+  hasOmega3?: boolean;
+  omega3?: boolean;
+  maxDailyOccurrences?: number;
+  tags?: string[];
 }
 
 export interface GeneratedFoodPortion {
@@ -60,11 +73,16 @@ export interface GeneratedFoodPortion {
   carbs: number;
   protein: number;
   fat: number;
+  kcal: number;
+  source: LocalFood['source'];
 }
 
 export interface GeneratedMeal {
   name: string;
+  workoutTiming: MealWorkoutTiming;
   target: MacroTarget;
+  actual: MacroTarget;
+  withinTolerance: boolean;
   foods: GeneratedFoodPortion[];
 }
 
@@ -75,7 +93,22 @@ export interface GeneratedMenu {
   createdAt: string;
   engineVersion: 'nutrition-engine-v2';
   status: 'exact' | 'balanced' | 'best_feasible';
+  tolerancePercent: number;
+  generationMode: 'full_pool' | 'selected_foods';
+  selectedFoodIds?: string[];
   meals: GeneratedMeal[];
   target: MacroTarget;
   actual: MacroTarget;
+  targetKcal: number;
+  actualKcal: number;
+  residuals: MacroTarget;
+}
+
+export interface NutritionAppSnapshot {
+  customTimings: TimingTemplate[];
+  customFoods: LocalFood[];
+  savedMenus: GeneratedMenu[];
+  lastTarget?: MacroTarget;
+  lastTimingId?: string;
+  selectedFoodIds?: string[];
 }
