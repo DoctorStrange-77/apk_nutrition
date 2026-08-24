@@ -1,34 +1,36 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BUILDER_FOODS } from '@/data/builderFoods';
 import { BUILT_IN_TIMINGS } from '@/data/builtInTimings';
-import {
-  calculateMealTargets,
-  createEmptyTiming,
-  timingTotals,
-  validateTimingTemplate,
-} from '@/domain/timing';
+import { calculateMealTargets, createEmptyTiming, timingTotals, validateTimingTemplate } from '@/domain/timing';
+import { kcalFromMacros, macrosForManualDay, macrosForManualItem, macrosForManualMeal } from '@/domain/manualMenu';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
-import { getLocalValue, initLocalDatabase, setLocalValue } from '@/storage/localDatabase';
 import { scanProductBarcode } from '@/services/barcodeService';
 import { lookupOpenFoodFacts } from '@/services/openFoodFactsService';
+import { getLocalValue, initLocalDatabase, setLocalValue } from '@/storage/localDatabase';
 import type {
+  FoodCategory,
   GeneratedMenu,
   LocalFood,
   MacroTarget,
+  ManualMeal,
   NutritionAppSnapshot,
+  SavedManualMenu,
   TimingMeal,
   TimingTemplate,
 } from '@/types/nutrition';
 
 type Tab = 'menu' | 'timing' | 'foods' | 'saved';
+type MenuMode = 'automatic' | 'manual';
 
 const DEFAULT_TARGET: MacroTarget = { carbs: 300, protein: 180, fat: 60 };
 const EMPTY_SNAPSHOT: NutritionAppSnapshot = { customTimings: [], customFoods: [], savedMenus: [] };
 
-const safeNumber = (value: string) => {
+const safeNumber = (value: string | number) => {
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : 0;
 };
+
+const foodMacros = (food: LocalFood) => `${food.carbs.toFixed(1)}C · ${food.protein.toFixed(1)}P · ${food.fat.toFixed(1)}F`;
 
 const cloneTimingForEdit = (timing: TimingTemplate): TimingTemplate => ({
   ...timing,
@@ -40,15 +42,36 @@ const cloneTimingForEdit = (timing: TimingTemplate): TimingTemplate => ({
   meals: timing.meals.map((meal, index) => ({ ...meal, id: `meal-${Date.now()}-${index}` })),
 });
 
-const foodMacros = (food: LocalFood) => `${food.carbs.toFixed(1)}C · ${food.protein.toFixed(1)}P · ${food.fat.toFixed(1)}F`;
+const classifyFood = (carbs: number, protein: number, fat: number): FoodCategory => {
+  const energies = { carb: carbs * 4, protein: protein * 4, fat: fat * 9 };
+  const total = energies.carb + energies.protein + energies.fat;
+  if (!total) return 'mixed';
+  const significant = Object.values(energies).filter((value) => value / total >= 0.2).length;
+  if (significant >= 2) return 'mixed';
+  if (energies.protein >= energies.carb && energies.protein >= energies.fat) return 'protein';
+  if (energies.fat >= energies.carb) return 'fat';
+  return 'carb';
+};
+
+const syncMealsToTiming = (timing: TimingTemplate, current: ManualMeal[]): ManualMeal[] =>
+  timing.meals.map((meal, index) => ({
+    id: current[index]?.id || `manual-meal-${Date.now()}-${index}`,
+    name: meal.name,
+    items: current[index]?.items || [],
+  }));
 
 export function App() {
   const [tab, setTab] = useState<Tab>('menu');
+  const [menuMode, setMenuMode] = useState<MenuMode>('automatic');
   const [ready, setReady] = useState(false);
   const [target, setTarget] = useState<MacroTarget>(DEFAULT_TARGET);
   const [customTimings, setCustomTimings] = useState<TimingTemplate[]>([]);
   const [customFoods, setCustomFoods] = useState<LocalFood[]>([]);
+  const [foodOverrides, setFoodOverrides] = useState<Record<string, LocalFood>>({});
+  const [deletedFoodIds, setDeletedFoodIds] = useState<string[]>([]);
   const [savedMenus, setSavedMenus] = useState<GeneratedMenu[]>([]);
+  const [savedManualMenus, setSavedManualMenus] = useState<SavedManualMenu[]>([]);
+  const [manualMeals, setManualMeals] = useState<ManualMeal[]>([]);
   const [selectedFoodIds, setSelectedFoodIds] = useState<string[]>([]);
   const [activeTimingId, setActiveTimingId] = useState('omogeneo');
   const [menu, setMenu] = useState<GeneratedMenu | null>(null);
@@ -56,17 +79,29 @@ export function App() {
   const [status, setStatus] = useState('');
   const [foodSearch, setFoodSearch] = useState('');
   const [editingTiming, setEditingTiming] = useState<TimingTemplate | null>(null);
+  const [editingFood, setEditingFood] = useState<LocalFood | null>(null);
+  const [manualPickerMealId, setManualPickerMealId] = useState<string | null>(null);
+  const [manualPickerSearch, setManualPickerSearch] = useState('');
   const [manualFood, setManualFood] = useState({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
 
   const timings = useMemo(() => [...BUILT_IN_TIMINGS, ...customTimings], [customTimings]);
-  const foods = useMemo(() => [...BUILDER_FOODS, ...customFoods], [customFoods]);
+  const foods = useMemo(() => {
+    const base = BUILDER_FOODS.map((food) => foodOverrides[food.id] || food).filter((food) => !deletedFoodIds.includes(food.id));
+    const custom = customFoods.filter((food) => !deletedFoodIds.includes(food.id));
+    return [...base, ...custom];
+  }, [customFoods, foodOverrides, deletedFoodIds]);
   const activeTiming = timings.find((timing) => timing.id === activeTimingId) || timings[0];
-  const kcal = target.carbs * 4 + target.protein * 4 + target.fat * 9;
+  const kcal = kcalFromMacros(target);
   const mealTargets = activeTiming ? calculateMealTargets(target, activeTiming) : [];
-  const filteredFoods = foods.filter((food) => {
+  const manualActual = useMemo(() => macrosForManualDay(manualMeals), [manualMeals]);
+  const filteredFoods = useMemo(() => {
     const query = foodSearch.trim().toLowerCase();
-    return !query || `${food.name} ${food.brand || ''} ${food.subcategory || ''}`.toLowerCase().includes(query);
-  });
+    return foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.subcategory || ''} ${food.barcode || ''}`.toLowerCase().includes(query));
+  }, [foods, foodSearch]);
+  const manualPickerFoods = useMemo(() => {
+    const query = manualPickerSearch.trim().toLowerCase();
+    return foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.barcode || ''}`.toLowerCase().includes(query)).slice(0, 40);
+  }, [foods, manualPickerSearch]);
 
   useEffect(() => {
     void (async () => {
@@ -75,9 +110,14 @@ export function App() {
         const snapshot = await getLocalValue<NutritionAppSnapshot>('snapshot', EMPTY_SNAPSHOT);
         setCustomTimings(snapshot.customTimings || []);
         setCustomFoods(snapshot.customFoods || []);
+        setFoodOverrides(snapshot.foodOverrides || {});
+        setDeletedFoodIds(snapshot.deletedFoodIds || []);
         setSavedMenus(snapshot.savedMenus || []);
+        setSavedManualMenus(snapshot.savedManualMenus || []);
+        setManualMeals(snapshot.manualMeals || []);
         setTarget(snapshot.lastTarget || DEFAULT_TARGET);
         setActiveTimingId(snapshot.lastTimingId || 'omogeneo');
+        setMenuMode(snapshot.lastMenuMode || 'automatic');
         setSelectedFoodIds(snapshot.selectedFoodIds || []);
       } catch (error) {
         setStatus(`Archivio locale: ${String(error)}`);
@@ -88,17 +128,27 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!ready || !activeTiming) return;
+    setManualMeals((current) => syncMealsToTiming(activeTiming, current));
+  }, [ready, activeTimingId, activeTiming?.id]);
+
+  useEffect(() => {
     if (!ready) return;
     const snapshot: NutritionAppSnapshot = {
       customTimings,
       customFoods,
+      foodOverrides,
+      deletedFoodIds,
       savedMenus,
+      savedManualMenus,
+      manualMeals,
       lastTarget: target,
       lastTimingId: activeTimingId,
+      lastMenuMode: menuMode,
       selectedFoodIds,
     };
     void setLocalValue('snapshot', snapshot).catch((error) => setStatus(`Salvataggio locale: ${String(error)}`));
-  }, [ready, customTimings, customFoods, savedMenus, target, activeTimingId, selectedFoodIds]);
+  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds]);
 
   const generate = (regenerate = false) => {
     if (!activeTiming) return;
@@ -114,9 +164,7 @@ export function App() {
       });
       setAttemptSeed(nextSeed);
       setMenu(result);
-      setStatus(result.status === 'best_feasible'
-        ? 'Generata la migliore soluzione possibile con gli alimenti disponibili.'
-        : 'Menu generato e validato.');
+      setStatus(result.status === 'best_feasible' ? 'Generata la migliore soluzione possibile.' : 'Menu generato e validato.');
     } catch (error) {
       setStatus(`Generazione non riuscita: ${String(error)}`);
     }
@@ -125,15 +173,31 @@ export function App() {
   const saveCurrentMenu = () => {
     if (!menu) return;
     setSavedMenus((current) => [menu, ...current.filter((entry) => entry.id !== menu.id)].slice(0, 100));
-    setStatus('Menu salvato sul dispositivo.');
+    setStatus('Menu automatico salvato sul dispositivo.');
+  };
+
+  const saveManualDay = () => {
+    if (!manualMeals.some((meal) => meal.items.length)) {
+      setStatus('Aggiungi almeno un alimento prima di salvare la giornata.');
+      return;
+    }
+    const actual = macrosForManualDay(manualMeals);
+    const saved: SavedManualMenu = {
+      id: `manual-menu-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      timingTemplateId: activeTimingId,
+      target: { ...target },
+      actual,
+      targetKcal: kcalFromMacros(target),
+      actualKcal: kcalFromMacros(actual),
+      meals: structuredClone(manualMeals),
+    };
+    setSavedManualMenus((current) => [saved, ...current].slice(0, 100));
+    setStatus('Giornata manuale salvata.');
   };
 
   const updateEditingMeal = (index: number, patch: Partial<TimingMeal>) => {
-    setEditingTiming((current) => current ? {
-      ...current,
-      meals: current.meals.map((meal, mealIndex) => mealIndex === index ? { ...meal, ...patch } : meal),
-      updatedAt: new Date().toISOString(),
-    } : current);
+    setEditingTiming((current) => current ? { ...current, meals: current.meals.map((meal, mealIndex) => mealIndex === index ? { ...meal, ...patch } : meal), updatedAt: new Date().toISOString() } : current);
   };
 
   const resizeTiming = (count: number) => {
@@ -141,16 +205,7 @@ export function App() {
       if (!current) return current;
       const nextCount = Math.max(1, Math.min(6, count));
       const meals = [...current.meals];
-      while (meals.length < nextCount) {
-        meals.push({
-          id: `meal-${Date.now()}-${meals.length}`,
-          name: `Pasto ${meals.length + 1}`,
-          carbsPercent: 0,
-          proteinPercent: 0,
-          fatPercent: 0,
-          workoutTiming: 'none',
-        });
-      }
+      while (meals.length < nextCount) meals.push({ id: `meal-${Date.now()}-${meals.length}`, name: `Pasto ${meals.length + 1}`, carbsPercent: 0, proteinPercent: 0, fatPercent: 0, workoutTiming: 'none' });
       return { ...current, meals: meals.slice(0, nextCount), updatedAt: new Date().toISOString() };
     });
   };
@@ -159,11 +214,7 @@ export function App() {
     setEditingTiming((current) => {
       if (!current || !current.meals.length) return current;
       const equal = 100 / current.meals.length;
-      return {
-        ...current,
-        meals: current.meals.map((meal) => ({ ...meal, carbsPercent: equal, proteinPercent: equal, fatPercent: equal })),
-        updatedAt: new Date().toISOString(),
-      };
+      return { ...current, meals: current.meals.map((meal) => ({ ...meal, carbsPercent: equal, proteinPercent: equal, fatPercent: equal })), updatedAt: new Date().toISOString() };
     });
   };
 
@@ -171,7 +222,7 @@ export function App() {
     if (!editingTiming) return;
     const validation = validateTimingTemplate(editingTiming);
     if (!validation.valid) {
-      setStatus('Timing non valido: carboidrati, proteine e grassi devono totalizzare 100%.');
+      setStatus('Timing non valido: C, P e F devono totalizzare 100%.');
       return;
     }
     setCustomTimings((current) => [editingTiming, ...current.filter((timing) => timing.id !== editingTiming.id)]);
@@ -182,33 +233,64 @@ export function App() {
 
   const addManualFood = () => {
     if (!manualFood.name.trim()) {
-      setStatus('Inserisci il nome dell’alimento.');
+      setStatus('Inserisci il nome dell alimento.');
       return;
     }
-    const id = `food-${Date.now()}`;
-    const energies = {
-      carb: manualFood.carbs * 4,
-      protein: manualFood.protein * 4,
-      fat: manualFood.fat * 9,
-    };
-    const total = energies.carb + energies.protein + energies.fat;
-    const category: LocalFood['category'] = total > 0 && Object.values(energies).filter((value) => value / total >= 0.2).length < 2
-      ? (energies.protein >= energies.carb && energies.protein >= energies.fat ? 'protein' : energies.fat >= energies.carb ? 'fat' : 'carb')
-      : 'mixed';
     const food: LocalFood = {
-      id,
+      id: `food-${Date.now()}`,
       name: manualFood.name.trim(),
       barcode: manualFood.barcode.trim() || undefined,
       carbs: manualFood.carbs,
       protein: manualFood.protein,
       fat: manualFood.fat,
-      category,
+      category: classifyFood(manualFood.carbs, manualFood.protein, manualFood.fat),
       suitable: ['breakfast', 'snack', 'lunch', 'dinner', 'prenanna'],
       source: manualFood.barcode ? 'barcode' : 'manual',
     };
     setCustomFoods((current) => [food, ...current]);
     setManualFood({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
+    setEditingFood(structuredClone(food));
     setStatus('Alimento aggiunto al database locale.');
+  };
+
+  const saveEditingFood = () => {
+    if (!editingFood || !editingFood.name.trim()) return;
+    const normalized: LocalFood = {
+      ...editingFood,
+      name: editingFood.name.trim(),
+      brand: editingFood.brand?.trim() || undefined,
+      barcode: editingFood.barcode?.trim() || undefined,
+      carbs: safeNumber(editingFood.carbs),
+      protein: safeNumber(editingFood.protein),
+      fat: safeNumber(editingFood.fat),
+      fiber: editingFood.fiber == null ? undefined : safeNumber(editingFood.fiber),
+      grammiMin: editingFood.grammiMin == null ? undefined : safeNumber(editingFood.grammiMin),
+      grammiMax: editingFood.grammiMax == null ? undefined : safeNumber(editingFood.grammiMax),
+    };
+    const isBuilder = BUILDER_FOODS.some((food) => food.id === normalized.id);
+    if (isBuilder) {
+      setFoodOverrides((current) => ({ ...current, [normalized.id]: normalized }));
+      setDeletedFoodIds((current) => current.filter((id) => id !== normalized.id));
+    } else {
+      setCustomFoods((current) => [normalized, ...current.filter((food) => food.id !== normalized.id)]);
+    }
+    setEditingFood(null);
+    setStatus(`Alimento aggiornato: ${normalized.name}`);
+  };
+
+  const deleteEditingFood = () => {
+    if (!editingFood) return;
+    const id = editingFood.id;
+    const isBuilder = BUILDER_FOODS.some((food) => food.id === id);
+    if (isBuilder) {
+      setDeletedFoodIds((current) => current.includes(id) ? current : [...current, id]);
+      setFoodOverrides((current) => { const next = { ...current }; delete next[id]; return next; });
+    } else {
+      setCustomFoods((current) => current.filter((food) => food.id !== id));
+    }
+    setSelectedFoodIds((current) => current.filter((foodId) => foodId !== id));
+    setEditingFood(null);
+    setStatus('Alimento eliminato dal database locale.');
   };
 
   const scanBarcode = async () => {
@@ -218,39 +300,55 @@ export function App() {
       const localFood = foods.find((food) => food.barcode === barcode);
       if (localFood) {
         setFoodSearch(localFood.name);
+        setEditingFood(structuredClone(localFood));
         setStatus(`Trovato nel database locale: ${localFood.name}`);
         return;
       }
-
       setStatus(`Barcode ${barcode} letto. Ricerca su Open Food Facts...`);
       try {
         const externalFood = await lookupOpenFoodFacts(barcode);
         if (externalFood) {
           setCustomFoods((current) => [externalFood, ...current.filter((food) => food.barcode !== barcode)]);
           setFoodSearch(externalFood.name);
+          setEditingFood(structuredClone(externalFood));
           setManualFood({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
-          setStatus(`Trovato online e salvato sul dispositivo: ${externalFood.name}${externalFood.brand ? ` - ${externalFood.brand}` : ''}`);
+          setStatus(`Trovato online: ${externalFood.name}${externalFood.brand ? ` - ${externalFood.brand}` : ''}. Valori caricati nella scheda.`);
           return;
         }
-
         setManualFood((current) => ({ ...current, barcode }));
-        setStatus(`Barcode ${barcode} non trovato su Open Food Facts. Puoi inserirlo manualmente una sola volta.`);
+        setStatus(`Barcode ${barcode} non trovato online. Puoi inserirlo manualmente.`);
       } catch (lookupError) {
         setManualFood((current) => ({ ...current, barcode }));
         const lookupText = String(lookupError);
-        setStatus(lookupText.includes('OPEN_FOOD_FACTS_TIMEOUT') || lookupText.includes('Failed to fetch')
-          ? `Barcode ${barcode} letto, ma la ricerca online non e disponibile. Riprova con connessione internet oppure inseriscilo manualmente.`
-          : `Barcode ${barcode} letto. Open Food Facts: ${lookupText}`);
+        setStatus(lookupText.includes('OPEN_FOOD_FACTS_TIMEOUT') || lookupText.includes('Failed to fetch') ? `Barcode ${barcode} letto, ma la ricerca online non e disponibile.` : `Open Food Facts: ${lookupText}`);
       }
     } catch (error) {
       const text = String(error);
-      setStatus(text.includes('SCANNER_MODULE_INSTALLING')
-        ? 'Modulo scanner Android in installazione. Riprova tra poco.'
-        : `Scanner: ${text}`);
+      setStatus(text.includes('SCANNER_MODULE_INSTALLING') ? 'Modulo scanner Android in installazione. Riprova tra poco.' : `Scanner: ${text}`);
     }
   };
 
-  if (!ready) return <main className="app-shell"><p>Inizializzazione archivio locale…</p></main>;
+  const addFoodToManualMeal = (mealId: string, food: LocalFood) => {
+    const grams = Math.max(1, food.grammiMin || 100);
+    setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: [...meal.items, { id: `manual-item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, food: structuredClone(food), grams }] } : meal));
+    setManualPickerMealId(null);
+    setManualPickerSearch('');
+  };
+
+  const updateManualItemGrams = (mealId: string, itemId: string, grams: number) => {
+    setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: meal.items.map((item) => item.id === itemId ? { ...item, grams: safeNumber(grams) } : item) } : meal));
+  };
+
+  const removeManualItem = (mealId: string, itemId: string) => {
+    setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: meal.items.filter((item) => item.id !== itemId) } : meal));
+  };
+
+  const clearManualDay = () => {
+    setManualMeals((current) => current.map((meal) => ({ ...meal, items: [] })));
+    setStatus('Giornata manuale azzerata.');
+  };
+
+  if (!ready) return <main className="app-shell"><p>Inizializzazione archivio locale...</p></main>;
 
   return (
     <main className="app-shell">
@@ -258,9 +356,9 @@ export function App() {
         <div>
           <p className="eyebrow">BUILDER NUTRITION</p>
           <h1>Nutrition Engine V2</h1>
-          <p className="muted">Macro, timing, alimenti e menu salvati sul dispositivo. Nessun login.</p>
+          <p className="muted">Macro, timing, alimenti e menu sul dispositivo. Nessun login.</p>
         </div>
-        <div className="kcal-badge">{kcal.toFixed(0)} kcal</div>
+        <div className="kcal-badge">{kcal.toFixed(0)}<small>kcal</small></div>
       </header>
 
       <nav className="tabs">
@@ -273,6 +371,11 @@ export function App() {
       {status && <div className="status" role="status">{status}</div>}
 
       {tab === 'menu' && <>
+        <div className="mode-switch">
+          <button className={menuMode === 'automatic' ? 'active' : ''} onClick={() => setMenuMode('automatic')}>Composizione automatica</button>
+          <button className={menuMode === 'manual' ? 'active' : ''} onClick={() => setMenuMode('manual')}>Composizione manuale</button>
+        </div>
+
         <section className="card">
           <h2>Target giornaliero</h2>
           <div className="macro-grid">
@@ -288,67 +391,78 @@ export function App() {
             {timings.map((timing) => <option key={timing.id} value={timing.id}>{timing.name}</option>)}
           </select>
           <div className="meal-targets">
-            {mealTargets.map((meal, index) => <div className="target-chip" key={`${activeTimingId}-${index}`}>
-              <strong>{meal.name}</strong><span>{meal.carbs.toFixed(0)}C · {meal.protein.toFixed(0)}P · {meal.fat.toFixed(0)}F</span>
-            </div>)}
+            {mealTargets.map((meal, index) => <div className="target-chip" key={`${activeTimingId}-${index}`}><strong>{meal.name}</strong><span>{meal.carbs.toFixed(0)}C · {meal.protein.toFixed(0)}P · {meal.fat.toFixed(0)}F</span></div>)}
           </div>
         </section>
 
-        <section className="card">
-          <div className="row-between"><h2>Pool alimenti</h2><button className="ghost" onClick={() => setTab('foods')}>Scegli</button></div>
-          <p className="muted">{selectedFoodIds.length ? `${selectedFoodIds.length} alimenti selezionati: il motore userà solo questi.` : `Pool completo: ${foods.length} alimenti disponibili.`}</p>
-          {selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Usa tutto il database</button>}
-        </section>
+        {menuMode === 'automatic' && <>
+          <section className="card">
+            <div className="row-between"><h2>Pool alimenti</h2><button className="ghost" onClick={() => setTab('foods')}>Scegli</button></div>
+            <p className="muted">{selectedFoodIds.length ? `${selectedFoodIds.length} alimenti selezionati: il motore usera solo questi.` : `Pool completo: ${foods.length} alimenti disponibili.`}</p>
+            {selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Usa tutto il database</button>}
+          </section>
+          <div className="actions"><button className="primary" onClick={() => generate(false)}>Genera menu</button><button className="secondary" onClick={() => generate(true)} disabled={!menu}>Rigenera</button></div>
+          {menu && <section className="card result-card">
+            <div className="row-between"><div><p className="eyebrow red">{menu.status.toUpperCase()}</p><h2>Menu generato</h2></div><div className="button-group"><button className="secondary" onClick={saveCurrentMenu}>Salva</button><button className="danger" onClick={() => { setMenu(null); setStatus('Menu corrente eliminato.'); }}>Elimina</button></div></div>
+            <div className="result-summary"><span>Target {menu.target.carbs.toFixed(1)}C / {menu.target.protein.toFixed(1)}P / {menu.target.fat.toFixed(1)}F</span><span>Reale {menu.actual.carbs.toFixed(1)}C / {menu.actual.protein.toFixed(1)}P / {menu.actual.fat.toFixed(1)}F</span><span>Tolleranza {menu.tolerancePercent}%</span></div>
+            {menu.meals.map((meal, index) => <article className="generated-meal" key={`${menu.id}-${index}`}>
+              <div className="row-between"><strong>{meal.name}</strong><span className={meal.withinTolerance ? 'ok' : 'warn'}>{meal.workoutTiming !== 'none' ? meal.workoutTiming.toUpperCase() : ''}</span></div>
+              <small>Target {meal.target.carbs.toFixed(1)}C · {meal.target.protein.toFixed(1)}P · {meal.target.fat.toFixed(1)}F</small>
+              {meal.foods.map((portion) => <button className="food-line food-link" key={`${meal.name}-${portion.foodId}`} onClick={() => { const food = foods.find((item) => item.id === portion.foodId); if (food) { setEditingFood(structuredClone(food)); setTab('foods'); } }}><span>{portion.name}</span><strong>{portion.grams} g</strong></button>)}
+              <small>Reale {meal.actual.carbs.toFixed(1)}C · {meal.actual.protein.toFixed(1)}P · {meal.actual.fat.toFixed(1)}F</small>
+            </article>)}
+          </section>}
+        </>}
 
-        <div className="actions">
-          <button className="primary" onClick={() => generate(false)}>Genera menu</button>
-          <button onClick={() => generate(true)} disabled={!menu}>Rigenera</button>
-        </div>
+        {menuMode === 'manual' && <>
+          <section className="card manual-summary">
+            <div className="row-between"><h2>Giornata manuale</h2><span className="live-badge">LIVE</span></div>
+            <div className="macro-progress-grid">
+              <div><small>Carboidrati</small><strong>{manualActual.carbs.toFixed(1)} / {target.carbs.toFixed(0)} g</strong></div>
+              <div><small>Proteine</small><strong>{manualActual.protein.toFixed(1)} / {target.protein.toFixed(0)} g</strong></div>
+              <div><small>Grassi</small><strong>{manualActual.fat.toFixed(1)} / {target.fat.toFixed(0)} g</strong></div>
+              <div><small>Calorie</small><strong>{kcalFromMacros(manualActual).toFixed(0)} / {kcal.toFixed(0)}</strong></div>
+            </div>
+            <div className="button-group manual-actions"><button className="primary" onClick={saveManualDay}>Salva giornata</button><button className="danger" onClick={clearManualDay}>Azzera</button></div>
+          </section>
 
-        {menu && <section className="card result-card">
-          <div className="row-between">
-            <div><p className="eyebrow">{menu.status.toUpperCase()}</p><h2>Menu generato</h2></div>
-            <button onClick={saveCurrentMenu}>Salva</button>
-          </div>
-          <div className="result-summary">
-            <span>Target {menu.target.carbs.toFixed(1)}C / {menu.target.protein.toFixed(1)}P / {menu.target.fat.toFixed(1)}F</span>
-            <span>Reale {menu.actual.carbs.toFixed(1)}C / {menu.actual.protein.toFixed(1)}P / {menu.actual.fat.toFixed(1)}F</span>
-            <span>Tolleranza {menu.tolerancePercent}%</span>
-          </div>
-          {menu.meals.map((meal, index) => <article className="generated-meal" key={`${menu.id}-${index}`}>
-            <div className="row-between"><strong>{meal.name}</strong><span className={meal.withinTolerance ? 'ok' : 'warn'}>{meal.workoutTiming !== 'none' ? meal.workoutTiming.toUpperCase() : ''}</span></div>
-            <small>Target {meal.target.carbs.toFixed(1)}C · {meal.target.protein.toFixed(1)}P · {meal.target.fat.toFixed(1)}F</small>
-            {meal.foods.map((food) => <div className="food-line" key={`${meal.name}-${food.foodId}`}><span>{food.name}</span><strong>{food.grams} g</strong></div>)}
-            <small>Reale {meal.actual.carbs.toFixed(1)}C · {meal.actual.protein.toFixed(1)}P · {meal.actual.fat.toFixed(1)}F</small>
-          </article>)}
-        </section>}
+          {manualMeals.map((meal, mealIndex) => {
+            const actual = macrosForManualMeal(meal);
+            const mealTarget = mealTargets[mealIndex];
+            return <section className="card manual-meal" key={meal.id}>
+              <div className="row-between"><div><h2>{meal.name}</h2>{mealTarget && <small className="meal-subtitle">Target {mealTarget.carbs.toFixed(0)}C · {mealTarget.protein.toFixed(0)}P · {mealTarget.fat.toFixed(0)}F</small>}</div><button className="add-food-button" onClick={() => { setManualPickerMealId(meal.id); setManualPickerSearch(''); }}>+ Alimento</button></div>
+              {!meal.items.length && <p className="empty-meal">Nessun alimento inserito.</p>}
+              {meal.items.map((item) => {
+                const itemMacros = macrosForManualItem(item);
+                return <div className="manual-item" key={item.id}>
+                  <button className="manual-food-name" onClick={() => { setEditingFood(structuredClone(item.food)); setTab('foods'); }}><strong>{item.food.name}</strong><small>{itemMacros.carbs.toFixed(1)}C · {itemMacros.protein.toFixed(1)}P · {itemMacros.fat.toFixed(1)}F</small></button>
+                  <label className="grams-field"><input type="number" min="0" value={item.grams} onChange={(e) => updateManualItemGrams(meal.id, item.id, safeNumber(e.target.value))} /><span>g</span></label>
+                  <button className="icon-danger" aria-label="Rimuovi alimento" onClick={() => removeManualItem(meal.id, item.id)}>×</button>
+                </div>;
+              })}
+              <div className="meal-total">Reale {actual.carbs.toFixed(1)}C · {actual.protein.toFixed(1)}P · {actual.fat.toFixed(1)}F</div>
+              {manualPickerMealId === meal.id && <div className="manual-picker">
+                <div className="row-between"><strong>Aggiungi alimento</strong><button className="ghost" onClick={() => setManualPickerMealId(null)}>Chiudi</button></div>
+                <input placeholder="Cerca alimento o barcode..." value={manualPickerSearch} onChange={(e) => setManualPickerSearch(e.target.value)} autoFocus />
+                <div className="picker-list">{manualPickerFoods.map((food) => <button key={food.id} onClick={() => addFoodToManualMeal(meal.id, food)}><span><strong>{food.name}</strong><small>{foodMacros(food)} {food.brand ? `· ${food.brand}` : ''}</small></span><b>+</b></button>)}</div>
+              </div>}
+            </section>;
+          })}
+        </>}
       </>}
 
       {tab === 'timing' && <>
         <section className="card">
           <div className="row-between"><h2>Gestione timing</h2><button className="primary small" onClick={() => setEditingTiming(createEmptyTiming('Nuovo timing', 5))}>Nuovo</button></div>
           <p className="muted">I timing Builder sono preinstallati. Duplicali per modificarli oppure creane uno da zero.</p>
-          <div className="timing-list">
-            {timings.map((timing) => <div className="list-row" key={timing.id}>
-              <button className="list-main" onClick={() => setActiveTimingId(timing.id)}><strong>{timing.name}</strong><span>{timing.meals.length} pasti · {timing.dayKind}</span></button>
-              <button onClick={() => setEditingTiming(timing.builtIn ? cloneTimingForEdit(timing) : structuredClone(timing))}>{timing.builtIn ? 'Duplica' : 'Modifica'}</button>
-              {!timing.builtIn && <button className="danger" onClick={() => setCustomTimings((current) => current.filter((item) => item.id !== timing.id))}>Elimina</button>}
-            </div>)}
-          </div>
+          <div className="timing-list">{timings.map((timing) => <div className="list-row" key={timing.id}><button className="list-main" onClick={() => setActiveTimingId(timing.id)}><strong>{timing.name}</strong><span>{timing.meals.length} pasti · {timing.dayKind}</span></button><button className="secondary" onClick={() => setEditingTiming(timing.builtIn ? cloneTimingForEdit(timing) : structuredClone(timing))}>{timing.builtIn ? 'Duplica' : 'Modifica'}</button>{!timing.builtIn && <button className="danger" onClick={() => setCustomTimings((current) => current.filter((item) => item.id !== timing.id))}>Elimina</button>}</div>)}</div>
         </section>
-
         {editingTiming && <section className="card editor-card">
           <div className="row-between"><h2>Editor timing</h2><button className="ghost" onClick={() => setEditingTiming(null)}>Chiudi</button></div>
           <label>Nome<input value={editingTiming.name} onChange={(e) => setEditingTiming({ ...editingTiming, name: e.target.value })} /></label>
-          <div className="inline-fields"><label>Pasti<input type="number" min="1" max="6" value={editingTiming.meals.length} onChange={(e) => resizeTiming(Number(e.target.value))} /></label><button onClick={distributeEqually}>Distribuisci 100% uguale</button></div>
+          <div className="inline-fields"><label>Pasti<input type="number" min="1" max="6" value={editingTiming.meals.length} onChange={(e) => resizeTiming(Number(e.target.value))} /></label><button className="secondary" onClick={distributeEqually}>Distribuisci 100% uguale</button></div>
           <div className="timing-editor-head"><span>Pasto</span><span>C%</span><span>P%</span><span>F%</span><span>WO</span></div>
-          {editingTiming.meals.map((meal, index) => <div className="timing-editor-row" key={meal.id}>
-            <input value={meal.name} onChange={(e) => updateEditingMeal(index, { name: e.target.value })} />
-            <input type="number" step="0.5" value={meal.carbsPercent} onChange={(e) => updateEditingMeal(index, { carbsPercent: safeNumber(e.target.value) })} />
-            <input type="number" step="0.5" value={meal.proteinPercent} onChange={(e) => updateEditingMeal(index, { proteinPercent: safeNumber(e.target.value) })} />
-            <input type="number" step="0.5" value={meal.fatPercent} onChange={(e) => updateEditingMeal(index, { fatPercent: safeNumber(e.target.value) })} />
-            <select value={meal.workoutTiming} onChange={(e) => updateEditingMeal(index, { workoutTiming: e.target.value as TimingMeal['workoutTiming'] })}><option value="none">—</option><option value="pre">PRE</option><option value="post">POST</option></select>
-          </div>)}
+          {editingTiming.meals.map((meal, index) => <div className="timing-editor-row" key={meal.id}><input value={meal.name} onChange={(e) => updateEditingMeal(index, { name: e.target.value })} /><input type="number" step="0.5" value={meal.carbsPercent} onChange={(e) => updateEditingMeal(index, { carbsPercent: safeNumber(e.target.value) })} /><input type="number" step="0.5" value={meal.proteinPercent} onChange={(e) => updateEditingMeal(index, { proteinPercent: safeNumber(e.target.value) })} /><input type="number" step="0.5" value={meal.fatPercent} onChange={(e) => updateEditingMeal(index, { fatPercent: safeNumber(e.target.value) })} /><select value={meal.workoutTiming} onChange={(e) => updateEditingMeal(index, { workoutTiming: e.target.value as TimingMeal['workoutTiming'] })}><option value="none">—</option><option value="pre">PRE</option><option value="post">POST</option></select></div>)}
           <div className="totals">{(() => { const totals = timingTotals(editingTiming); return <>Totali: C {totals.carbs.toFixed(1)}% · P {totals.protein.toFixed(1)}% · F {totals.fat.toFixed(1)}%</>; })()}</div>
           <button className="primary" onClick={saveTiming}>Salva timing</button>
         </section>}
@@ -356,37 +470,43 @@ export function App() {
 
       {tab === 'foods' && <>
         <section className="card">
-          <div className="row-between"><h2>Database alimenti</h2><button onClick={() => void scanBarcode()}>Scansiona barcode</button></div>
-          <input className="search" placeholder="Cerca alimento…" value={foodSearch} onChange={(e) => setFoodSearch(e.target.value)} />
+          <div className="row-between"><h2>Database alimenti</h2><button className="primary" onClick={() => void scanBarcode()}>Scansiona barcode</button></div>
+          <input className="search" placeholder="Cerca alimento, marca o barcode..." value={foodSearch} onChange={(e) => setFoodSearch(e.target.value)} />
           <div className="food-toolbar"><span>{selectedFoodIds.length} selezionati</span>{selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Deseleziona tutti</button>}</div>
-          <div className="food-list">
-            {filteredFoods.slice(0, 120).map((food) => <label className="food-choice" key={food.id}>
-              <input type="checkbox" checked={selectedFoodIds.includes(food.id)} onChange={() => setSelectedFoodIds((current) => current.includes(food.id) ? current.filter((id) => id !== food.id) : [...current, food.id])} />
-              <span><strong>{food.name}</strong><small>{foodMacros(food)} · {food.source}</small></span>
-            </label>)}
-          </div>
+          <div className="food-list">{filteredFoods.slice(0, 160).map((food) => <div className="food-choice" key={food.id}><input type="checkbox" checked={selectedFoodIds.includes(food.id)} onChange={() => setSelectedFoodIds((current) => current.includes(food.id) ? current.filter((id) => id !== food.id) : [...current, food.id])} /><button className="food-open" onClick={() => setEditingFood(structuredClone(food))}><span><strong>{food.name}</strong><small>{foodMacros(food)} · {food.source}{food.brand ? ` · ${food.brand}` : ''}</small></span><b>›</b></button></div>)}</div>
         </section>
+
+        {editingFood && <section className="card food-detail-card">
+          <div className="row-between"><div><p className="eyebrow red">SCHEDA ALIMENTO</p><h2>{editingFood.name}</h2></div><button className="ghost" onClick={() => setEditingFood(null)}>Chiudi</button></div>
+          <div className="food-origin">Origine: <strong>{editingFood.source}</strong>{editingFood.barcode && <> · Barcode <strong>{editingFood.barcode}</strong></>}</div>
+          <div className="form-grid detail-grid">
+            <label>Nome<input value={editingFood.name} onChange={(e) => setEditingFood({ ...editingFood, name: e.target.value })} /></label>
+            <label>Marca<input value={editingFood.brand || ''} onChange={(e) => setEditingFood({ ...editingFood, brand: e.target.value })} /></label>
+            <label>Barcode<input value={editingFood.barcode || ''} onChange={(e) => setEditingFood({ ...editingFood, barcode: e.target.value })} /></label>
+            <label>Categoria<select value={editingFood.category} onChange={(e) => setEditingFood({ ...editingFood, category: e.target.value as FoodCategory })}><option value="carb">Carboidrati</option><option value="protein">Proteine</option><option value="fat">Grassi</option><option value="mixed">Misto</option></select></label>
+            <label>Carboidrati /100g<input type="number" step="0.1" value={editingFood.carbs} onChange={(e) => setEditingFood({ ...editingFood, carbs: safeNumber(e.target.value) })} /></label>
+            <label>Proteine /100g<input type="number" step="0.1" value={editingFood.protein} onChange={(e) => setEditingFood({ ...editingFood, protein: safeNumber(e.target.value) })} /></label>
+            <label>Grassi /100g<input type="number" step="0.1" value={editingFood.fat} onChange={(e) => setEditingFood({ ...editingFood, fat: safeNumber(e.target.value) })} /></label>
+            <label>Fibre /100g<input type="number" step="0.1" value={editingFood.fiber ?? 0} onChange={(e) => setEditingFood({ ...editingFood, fiber: safeNumber(e.target.value) })} /></label>
+            <label>Porzione minima g<input type="number" value={editingFood.grammiMin ?? 0} onChange={(e) => setEditingFood({ ...editingFood, grammiMin: safeNumber(e.target.value) })} /></label>
+            <label>Porzione massima g<input type="number" value={editingFood.grammiMax ?? 0} onChange={(e) => setEditingFood({ ...editingFood, grammiMax: safeNumber(e.target.value) })} /></label>
+          </div>
+          <div className="nutrition-preview"><span><small>C</small><strong>{editingFood.carbs.toFixed(1)}</strong></span><span><small>P</small><strong>{editingFood.protein.toFixed(1)}</strong></span><span><small>F</small><strong>{editingFood.fat.toFixed(1)}</strong></span><span><small>KCAL</small><strong>{kcalFromMacros(editingFood).toFixed(0)}</strong></span></div>
+          <div className="button-group"><button className="primary" onClick={saveEditingFood}>Salva modifiche</button><button className="danger" onClick={deleteEditingFood}>Elimina alimento</button></div>
+        </section>}
 
         <section className="card">
           <h2>Aggiungi alimento</h2>
-          <div className="form-grid">
-            <label>Nome<input value={manualFood.name} onChange={(e) => setManualFood({ ...manualFood, name: e.target.value })} /></label>
-            <label>Barcode<input value={manualFood.barcode} onChange={(e) => setManualFood({ ...manualFood, barcode: e.target.value })} /></label>
-            <label>Carboidrati /100g<input type="number" value={manualFood.carbs} onChange={(e) => setManualFood({ ...manualFood, carbs: safeNumber(e.target.value) })} /></label>
-            <label>Proteine /100g<input type="number" value={manualFood.protein} onChange={(e) => setManualFood({ ...manualFood, protein: safeNumber(e.target.value) })} /></label>
-            <label>Grassi /100g<input type="number" value={manualFood.fat} onChange={(e) => setManualFood({ ...manualFood, fat: safeNumber(e.target.value) })} /></label>
-          </div>
+          <div className="form-grid"><label>Nome<input value={manualFood.name} onChange={(e) => setManualFood({ ...manualFood, name: e.target.value })} /></label><label>Barcode<input value={manualFood.barcode} onChange={(e) => setManualFood({ ...manualFood, barcode: e.target.value })} /></label><label>Carboidrati /100g<input type="number" value={manualFood.carbs} onChange={(e) => setManualFood({ ...manualFood, carbs: safeNumber(e.target.value) })} /></label><label>Proteine /100g<input type="number" value={manualFood.protein} onChange={(e) => setManualFood({ ...manualFood, protein: safeNumber(e.target.value) })} /></label><label>Grassi /100g<input type="number" value={manualFood.fat} onChange={(e) => setManualFood({ ...manualFood, fat: safeNumber(e.target.value) })} /></label></div>
           <button className="primary" onClick={addManualFood}>Salva alimento</button>
         </section>
       </>}
 
       {tab === 'saved' && <section className="card">
-        <h2>Menu salvati</h2>
-        {!savedMenus.length && <p className="muted">Nessun menu salvato.</p>}
-        {savedMenus.map((saved) => <div className="saved-row" key={saved.id}>
-          <button className="list-main" onClick={() => { setMenu(saved); setActiveTimingId(saved.timingTemplateId); setTab('menu'); }}><strong>{new Date(saved.createdAt).toLocaleString()}</strong><span>{saved.status} · {saved.targetKcal.toFixed(0)} kcal</span></button>
-          <button className="danger" onClick={() => setSavedMenus((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button>
-        </div>)}
+        <div className="row-between"><h2>Menu salvati</h2><span className="saved-count">{savedMenus.length + savedManualMenus.length}</span></div>
+        {!savedMenus.length && !savedManualMenus.length && <p className="muted">Nessun menu salvato.</p>}
+        {!!savedMenus.length && <><h3 className="section-label">AUTOMATICI</h3>{savedMenus.map((saved) => <div className="saved-row" key={saved.id}><button className="list-main" onClick={() => { setMenu(saved); setActiveTimingId(saved.timingTemplateId); setMenuMode('automatic'); setTab('menu'); }}><strong>{new Date(saved.createdAt).toLocaleString()}</strong><span>{saved.status} · {saved.targetKcal.toFixed(0)} kcal</span></button><button className="danger" onClick={() => setSavedMenus((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button></div>)}</>}
+        {!!savedManualMenus.length && <><h3 className="section-label">MANUALI</h3>{savedManualMenus.map((saved) => <div className="saved-row" key={saved.id}><button className="list-main" onClick={() => { setTarget(saved.target); setManualMeals(structuredClone(saved.meals)); setActiveTimingId(saved.timingTemplateId); setMenuMode('manual'); setTab('menu'); }}><strong>{new Date(saved.createdAt).toLocaleString()}</strong><span>manuale · {saved.actualKcal.toFixed(0)} / {saved.targetKcal.toFixed(0)} kcal</span></button><button className="danger" onClick={() => setSavedManualMenus((current) => current.filter((entry) => entry.id !== saved.id))}>Elimina</button></div>)}</>}
       </section>}
     </main>
   );
