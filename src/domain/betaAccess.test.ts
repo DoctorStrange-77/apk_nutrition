@@ -1,0 +1,42 @@
+import { describe, expect, it } from 'vitest';
+import {
+  betaEmailToUsername,
+  betaLoginErrorMessage,
+  betaUsernameToEmail,
+  isAuthorizedBetaEmail,
+  isValidBetaUsername,
+  normalizeBetaUsername,
+} from './betaAccess';
+
+describe('beta access helpers', () => {
+  it('normalizza lo username', () => {
+    expect(normalizeBetaUsername('  Tester.01 ')).toBe('tester.01');
+  });
+
+  it('converte lo username nell email tecnica Supabase', () => {
+    expect(betaUsernameToEmail('tester01')).toBe('tester01@buildernutrition.app');
+  });
+
+  it('accetta direttamente una email se fornita', () => {
+    expect(betaUsernameToEmail('user@example.com')).toBe('user@example.com');
+  });
+
+  it('valida solo username semplici', () => {
+    expect(isValidBetaUsername('tester_01')).toBe(true);
+    expect(isValidBetaUsername('te')).toBe(false);
+    expect(isValidBetaUsername('tester 01')).toBe(false);
+  });
+
+  it('ricava lo username dalla email tecnica', () => {
+    expect(betaEmailToUsername('tester01@buildernutrition.app')).toBe('tester01');
+  });
+
+  it('accetta solo email del dominio beta', () => {
+    expect(isAuthorizedBetaEmail('tester01@buildernutrition.app')).toBe(true);
+    expect(isAuthorizedBetaEmail('tester@gmail.com')).toBe(false);
+  });
+
+  it('non espone dettagli negli errori di login', () => {
+    expect(betaLoginErrorMessage()).toBe('Username o password non validi.');
+  });
+});
