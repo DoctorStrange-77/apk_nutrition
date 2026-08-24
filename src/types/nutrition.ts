@@ -116,6 +116,15 @@ export interface ManualMeal {
   items: ManualFoodItem[];
 }
 
+export interface DiaryDay {
+  date: string;
+  target: MacroTarget;
+  timingTemplateId: string;
+  meals: ManualMeal[];
+  generatedMenu?: GeneratedMenu | null;
+  updatedAt: string;
+}
+
 export interface SavedManualMenu {
   id: string;
   createdAt: string;
@@ -139,4 +148,8 @@ export interface NutritionAppSnapshot {
   lastTimingId?: string;
   lastMenuMode?: 'automatic' | 'manual';
   selectedFoodIds?: string[];
+  diaryDays?: Record<string, DiaryDay>;
+  activeDiaryDate?: string;
+  favoriteFoodIds?: string[];
+  recentFoodIds?: string[];
 }
