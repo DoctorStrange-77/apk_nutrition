@@ -1,0 +1,17 @@
+.smart-quantity-item { align-items:center; gap:10px; }
+.smart-quantity-control { display:flex; align-items:stretch; min-width:150px; border:1px solid rgba(255,255,255,.10); border-radius:12px; overflow:hidden; background:rgba(255,255,255,.035); }
+.smart-quantity-control input { width:78px; min-width:0; border:0; border-radius:0; background:transparent; text-align:right; padding:9px 8px; color:#fff; }
+.smart-quantity-control button { min-width:68px; border:0; border-left:1px solid rgba(255,255,255,.08); border-radius:0; background:rgba(255,255,255,.04); color:#d8d9dc; font-weight:800; padding:0 9px; }
+.food-portion-editor { margin-top:16px; padding:14px; border:1px solid rgba(255,255,255,.08); border-radius:16px; background:rgba(255,255,255,.025); }
+.food-portion-editor h3 { margin:2px 0 4px; }
+.portion-unit-row { display:grid; grid-template-columns:1.4fr 1fr; gap:8px; margin-top:9px; }
+.portion-unit-row > input,.portion-unit-row label { margin:0; }
+.portion-unit-row label { display:flex; align-items:center; gap:6px; }
+.portion-unit-row label input { width:100%; }
+.portion-unit-row label span { color:#999ba1; font-weight:800; }
+@media (max-width:620px) {
+  .smart-quantity-item { grid-template-columns:minmax(0,1fr) auto auto; }
+  .smart-quantity-control { min-width:130px; }
+  .smart-quantity-control input { width:66px; }
+  .portion-unit-row { grid-template-columns:1fr 120px; }
+}

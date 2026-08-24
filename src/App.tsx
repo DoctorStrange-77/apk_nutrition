@@ -8,6 +8,7 @@ import { TodaySummaryCard } from '@/components/TodaySummaryCard';
 import { FoodReplacementModal } from '@/components/FoodReplacementModal';
 import { RecipeEditorModal } from '@/components/RecipeEditorModal';
 import { SavedMealModal } from '@/components/SavedMealModal';
+import { ChoicePopup } from '@/components/ChoicePopup';
 import { WeeklyPlannerPanel } from '@/components/WeeklyPlannerPanel';
 import { ProgressPanel } from '@/components/ProgressPanel';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
@@ -25,6 +26,7 @@ import { buildLockedRegenerationContext, mergeUnlockedRegeneration, replaceFoodS
 import { buildCurrentDiaryDay, copyDiaryDay, copyMealIntoDay, emptyMealsForTiming, localDateKey, makeDiaryDay, shiftDateKey } from '@/domain/diary';
 import { appendSavedMeal, createEmptyRecipe, createSavedMealTemplate, recipeToLocalFood, validateRecipe } from '@/domain/recipes';
 import { generatedMenuToManualMeals } from '@/domain/weeklyPlanner';
+import { defaultQuantityMode, gramsFromQuantity, manualItemQuantity, modeLabel, quantityOptions, setManualItemQuantity, switchManualItemMode } from '@/domain/smartPortions';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode } from '@/services/barcodeService';
 import { lookupOpenFoodFacts } from '@/services/openFoodFactsService';
@@ -122,6 +124,7 @@ export function App() {
   const [savedMealMode, setSavedMealMode] = useState<'save' | 'pick' | null>(null);
   const [savedMealSourceIndex, setSavedMealSourceIndex] = useState<number | null>(null);
   const [savedMealTargetMealId, setSavedMealTargetMealId] = useState<string | null>(null);
+  const [quantityPickerContext, setQuantityPickerContext] = useState<{ mealId: string; itemId: string } | null>(null);
   const [manualPickerMealId, setManualPickerMealId] = useState<string | null>(null);
   const [manualPickerSearch, setManualPickerSearch] = useState('');
   const [showNewFood, setShowNewFood] = useState(false);
@@ -160,6 +163,11 @@ export function App() {
     const query = recipePickerSearch.trim().toLowerCase();
     return foods.filter((food) => food.source !== 'recipe' && (!query || `${food.name} ${food.brand || ''} ${food.barcode || ''}`.toLowerCase().includes(query))).slice(0, 80);
   }, [foods, recipePickerSearch]);
+  const quantityPickerItem = useMemo(() => {
+    if (!quantityPickerContext) return null;
+    return manualMeals.find((meal) => meal.id === quantityPickerContext.mealId)?.items.find((item) => item.id === quantityPickerContext.itemId) || null;
+  }, [manualMeals, quantityPickerContext]);
+
   const manualPickerFoods = useMemo(() => {
     const query = manualPickerSearch.trim().toLowerCase();
     const filtered = foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.barcode || ''}`.toLowerCase().includes(query));
@@ -597,15 +605,22 @@ export function App() {
   const addFoodToManualMeal = (mealId: string, food: LocalFood) => {
     setCompletionPlan(null);
     setRecentFoodIds((current) => [food.id, ...current.filter((id) => id !== food.id)].slice(0, 30));
-    const grams = Math.max(1, food.servingGrams || food.grammiMin || 100);
-    setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: [...meal.items, { id: `manual-item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, food: structuredClone(food), grams }] } : meal));
+    const quantityMode = defaultQuantityMode(food);
+    const defaultQuantity = quantityMode.startsWith('unit:') ? 1 : Math.max(1, food.servingGrams || food.grammiMin || 100);
+    const grams = gramsFromQuantity(food, quantityMode, defaultQuantity);
+    setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: [...meal.items, { id: `manual-item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, food: structuredClone(food), grams, quantityMode }] } : meal));
     setManualPickerMealId(null);
     setManualPickerSearch('');
   };
 
-  const updateManualItemGrams = (mealId: string, itemId: string, grams: number) => {
+  const updateManualItemQuantity = (mealId: string, itemId: string, quantity: number) => {
     setCompletionPlan(null);
-    setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: meal.items.map((item) => item.id === itemId ? { ...item, grams: safeNumber(grams) } : item) } : meal));
+    setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: meal.items.map((item) => item.id === itemId ? setManualItemQuantity(item, safeNumber(quantity)) : item) } : meal));
+  };
+
+  const changeManualItemQuantityMode = (mealId: string, itemId: string, mode: string) => {
+    setCompletionPlan(null);
+    setManualMeals((current) => current.map((meal) => meal.id === mealId ? { ...meal, items: meal.items.map((item) => item.id === itemId ? switchManualItemMode(item, mode) : item) } : meal));
   };
 
   const removeManualItem = (mealId: string, itemId: string) => {
@@ -784,9 +799,11 @@ export function App() {
               {!meal.items.length && <p className="empty-meal">Nessun alimento inserito.</p>}
               {meal.items.map((item) => {
                 const itemMacros = macrosForManualItem(item);
-                return <div className="manual-item" key={item.id}>
-                  <button className="manual-food-name" onClick={() => openFoodDetail(item.food)}><strong>{item.food.name}</strong><small>{itemMacros.carbs.toFixed(1)}C · {itemMacros.protein.toFixed(1)}P · {itemMacros.fat.toFixed(1)}F{item.food.servingName ? ` · ${item.food.servingName}` : ''}</small></button>
-                  <label className="grams-field"><input type="number" min="0" value={item.grams} onChange={(e) => updateManualItemGrams(meal.id, item.id, safeNumber(e.target.value))} /><span>g</span></label>
+                const quantity = manualItemQuantity(item);
+                const activeMode = item.quantityMode || defaultQuantityMode(item.food);
+                return <div className="manual-item smart-quantity-item" key={item.id}>
+                  <button className="manual-food-name" onClick={() => openFoodDetail(item.food)}><strong>{item.food.name}</strong><small>{itemMacros.carbs.toFixed(1)}C · {itemMacros.protein.toFixed(1)}P · {itemMacros.fat.toFixed(1)}F · {item.grams.toFixed(1)} g nutrizionali</small></button>
+                  <div className="smart-quantity-control"><input type="number" min="0" step={activeMode.startsWith('unit:') ? '0.25' : '1'} value={Number(quantity.toFixed(2))} onChange={(e) => updateManualItemQuantity(meal.id, item.id, safeNumber(e.target.value))} /><button type="button" onClick={() => setQuantityPickerContext({ mealId: meal.id, itemId: item.id })}>{modeLabel(item.food, activeMode)}⌄</button></div>
                   <button className="icon-danger" aria-label="Rimuovi alimento" onClick={() => removeManualItem(meal.id, item.id)}>×</button>
                 </div>;
               })}
@@ -867,6 +884,7 @@ export function App() {
       <FoodPickerModal open={!!manualPickerMealId} foods={manualPickerFoods} query={manualPickerSearch} onQueryChange={setManualPickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setManualPickerMealId(null)} onSelect={(food) => { if (manualPickerMealId) addFoodToManualMeal(manualPickerMealId, food); }} />
       <FoodPickerModal open={recipePickerOpen} foods={recipePickerFoods} query={recipePickerSearch} onQueryChange={setRecipePickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setRecipePickerOpen(false)} onSelect={addRecipeIngredient} />
       <NewFoodModal open={showNewFood} value={manualFood} onChange={setManualFood} onClose={() => setShowNewFood(false)} onSave={addManualFood} />
+      <ChoicePopup open={!!quantityPickerItem} title="Unità quantità" choices={quantityPickerItem ? quantityOptions(quantityPickerItem.food).map((option) => ({ value: option.value, label: option.label, subtitle: option.subtitle })) : []} value={quantityPickerItem?.quantityMode || (quantityPickerItem ? defaultQuantityMode(quantityPickerItem.food) : 'grams')} onClose={() => setQuantityPickerContext(null)} onSelect={(mode) => { if (quantityPickerContext) changeManualItemQuantityMode(quantityPickerContext.mealId, quantityPickerContext.itemId, mode); setQuantityPickerContext(null); }} />
       <BottomNav active={tab} onChange={setTab} />
     </main>
   );
