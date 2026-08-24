@@ -12,6 +12,7 @@ import {
   weekStartMonday,
 } from '@/domain/weeklyPlanner';
 import { kcalFromMacros } from '@/domain/manualMenu';
+import { migrateBuiltInTimingId } from '@/data/builtInTimings';
 import { getLocalValue, setLocalValue } from '@/storage/localDatabase';
 import type {
   LocalFood,
@@ -59,8 +60,9 @@ export function WeeklyPlannerPanel(props: Props) {
     void (async () => {
       const storedConfig = await getLocalValue<WeeklyPlannerConfig | null>(CONFIG_KEY, null);
       const storedResult = await getLocalValue<WeeklyPlanResult | null>(RESULT_KEY, null);
-      if (storedConfig?.days?.length === 7) setConfig(storedConfig);
-      if (storedResult?.days?.length) setResult(storedResult);
+      const resolveTimingId = (id?: string) => { const migrated = migrateBuiltInTimingId(id); return timings.some((timing) => timing.id === migrated) ? migrated : defaultTimingId; };
+      if (storedConfig?.days?.length === 7) setConfig({ ...storedConfig, days: storedConfig.days.map((day) => ({ ...day, timingTemplateId: resolveTimingId(day.timingTemplateId) })) });
+      if (storedResult?.days?.length) setResult({ ...storedResult, days: storedResult.days.map((day) => ({ ...day, timingTemplateId: resolveTimingId(day.timingTemplateId), menu: { ...day.menu, timingTemplateId: resolveTimingId(day.menu.timingTemplateId) } })) });
       setLoaded(true);
     })();
   }, []);

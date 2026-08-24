@@ -39,6 +39,6 @@ export function TodaySummaryCard({ target, consumed, onOpenGenerator }: Props) {
         </div>;
       })}
     </div>
-    <button className="primary today-generator-cta" onClick={onOpenGenerator}>Genera menu da macro + timing</button>
+    <button className="primary today-generator-cta" onClick={onOpenGenerator}>Crea menu automatico</button>
   </section>;
 }

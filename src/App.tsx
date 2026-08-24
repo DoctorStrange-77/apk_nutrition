@@ -5,6 +5,7 @@ import { DateActionModal } from '@/components/DateActionModal';
 import { SmartDayCard } from '@/components/SmartDayCard';
 import { CompletionPlanCard } from '@/components/CompletionPlanCard';
 import { TodaySummaryCard } from '@/components/TodaySummaryCard';
+import { SetupGuideCard } from '@/components/SetupGuideCard';
 import { FoodReplacementModal } from '@/components/FoodReplacementModal';
 import { RecipeEditorModal } from '@/components/RecipeEditorModal';
 import { SavedMealModal } from '@/components/SavedMealModal';
@@ -19,7 +20,7 @@ import { TimingSelectModal } from '@/components/TimingSelectModal';
 import { NewFoodModal } from '@/components/NewFoodModal';
 import { TimingEditorModal } from '@/components/TimingEditorModal';
 import { BUILDER_FOODS } from '@/data/builderFoods';
-import { BUILT_IN_TIMINGS } from '@/data/builtInTimings';
+import { BUILT_IN_TIMINGS, DEFAULT_BUILT_IN_TIMING_ID, migrateBuiltInTimingId } from '@/data/builtInTimings';
 import { calculateMealTargets, createEmptyTiming, timingTotals, validateTimingTemplate } from '@/domain/timing';
 import { kcalFromMacros, macrosForManualDay, macrosForManualItem, macrosForManualMeal } from '@/domain/manualMenu';
 import { applyCompletionPlan, buildSingleMealTiming, buildSmartCompletionContext, completionNeeded, replaceGeneratedMeal } from '@/domain/smartCompletion';
@@ -51,8 +52,12 @@ import type {
 type Tab = 'menu' | 'week' | 'progress' | 'profile' | 'timing' | 'foods' | 'saved';
 type MenuMode = 'automatic' | 'manual';
 type DateModalMode = 'navigate' | 'copy-day' | 'copy-meal';
+type SetupProgress = { target: boolean; timing: boolean; generated: boolean };
 
-const DEFAULT_TARGET: MacroTarget = { carbs: 300, protein: 180, fat: 60 };
+const SETUP_KEY = 'nutrition-setup-v1';
+const EMPTY_SETUP: SetupProgress = { target: false, timing: false, generated: false };
+
+const DEFAULT_TARGET: MacroTarget = { carbs: 0, protein: 0, fat: 0 };
 const EMPTY_SNAPSHOT: NutritionAppSnapshot = { customTimings: [], customFoods: [], savedMenus: [] };
 
 const safeNumber = (value: string | number) => {
@@ -95,6 +100,7 @@ export function App() {
   const [menuMode, setMenuMode] = useState<MenuMode>('manual');
   const [ready, setReady] = useState(false);
   const [target, setTarget] = useState<MacroTarget>(DEFAULT_TARGET);
+  const [setupProgress, setSetupProgress] = useState<SetupProgress>(EMPTY_SETUP);
   const [customTimings, setCustomTimings] = useState<TimingTemplate[]>([]);
   const [customFoods, setCustomFoods] = useState<LocalFood[]>([]);
   const [foodOverrides, setFoodOverrides] = useState<Record<string, LocalFood>>({});
@@ -109,7 +115,7 @@ export function App() {
   const [recentFoodIds, setRecentFoodIds] = useState<string[]>([]);
   const [savedMealTemplates, setSavedMealTemplates] = useState<SavedMealTemplate[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [activeTimingId, setActiveTimingId] = useState('omogeneo');
+  const [activeTimingId, setActiveTimingId] = useState(DEFAULT_BUILT_IN_TIMING_ID);
   const [menu, setMenu] = useState<GeneratedMenu | null>(null);
   const [completionPlan, setCompletionPlan] = useState<GeneratedMenu | null>(null);
   const [attemptSeed, setAttemptSeed] = useState(0);
@@ -190,19 +196,27 @@ export function App() {
       try {
         await initLocalDatabase();
         const snapshot = await getLocalValue<NutritionAppSnapshot>('snapshot', EMPTY_SNAPSHOT);
+        const storedSetup = await getLocalValue<SetupProgress | null>(SETUP_KEY, null);
         setCustomTimings(snapshot.customTimings || []);
         setCustomFoods(snapshot.customFoods || []);
         setFoodOverrides(snapshot.foodOverrides || {});
         setDeletedFoodIds(snapshot.deletedFoodIds || []);
-        setSavedMenus(snapshot.savedMenus || []);
-        setSavedManualMenus(snapshot.savedManualMenus || []);
+
         setSavedMealTemplates(snapshot.savedMealTemplates || []);
         setRecipes(snapshot.recipes || []);
         const today = localDateKey();
-        const existingDays = snapshot.diaryDays || {};
+        const knownTimingIds = new Set([...BUILT_IN_TIMINGS.map((item) => item.id), ...(snapshot.customTimings || []).map((item) => item.id)]);
+        const migrateTimingId = (id?: string) => { const migrated = migrateBuiltInTimingId(id); return knownTimingIds.has(migrated) ? migrated : DEFAULT_BUILT_IN_TIMING_ID; };
+        const existingDays = Object.fromEntries(Object.entries(snapshot.diaryDays || {}).map(([date, day]) => [date, { ...day, timingTemplateId: migrateTimingId(day.timingTemplateId), generatedMenu: day.generatedMenu ? { ...day.generatedMenu, timingTemplateId: migrateTimingId(day.generatedMenu.timingTemplateId) } : day.generatedMenu }]));
+        const migratedSavedMenus = (snapshot.savedMenus || []).map((saved) => ({ ...saved, timingTemplateId: migrateTimingId(saved.timingTemplateId) }));
+        const migratedManualMenus = (snapshot.savedManualMenus || []).map((saved) => ({ ...saved, timingTemplateId: migrateTimingId(saved.timingTemplateId) }));
+        setSavedMenus(migratedSavedMenus);
+        setSavedManualMenus(migratedManualMenus);
+        const hasGeneratedBefore = Object.values(existingDays).some((day) => !!day.generatedMenu) || !!migratedSavedMenus.length;
+        setSetupProgress(storedSetup || (hasGeneratedBefore ? { target: true, timing: true, generated: true } : EMPTY_SETUP));
         const legacyMeals = snapshot.manualMeals || [];
         const initialTarget = snapshot.lastTarget || DEFAULT_TARGET;
-        const initialTimingId = snapshot.lastTimingId || 'omogeneo';
+        const initialTimingId = migrateTimingId(snapshot.lastTimingId);
         const initialDay = existingDays[today] || makeDiaryDay(today, initialTarget, initialTimingId, legacyMeals, null);
         setDiaryDays({ ...existingDays, [today]: initialDay });
         setActiveDiaryDate(today);
@@ -231,6 +245,11 @@ export function App() {
 
   useEffect(() => {
     if (!ready) return;
+    void setLocalValue(SETUP_KEY, setupProgress);
+  }, [ready, setupProgress]);
+
+  useEffect(() => {
+    if (!ready) return;
     const currentDay = buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu);
     const persistedDays = { ...diaryDays, [activeDiaryDate]: currentDay };
     const snapshot: NutritionAppSnapshot = {
@@ -254,7 +273,7 @@ export function App() {
       destination = makeDiaryDay(nextDate, target, activeTimingId, timing ? emptyMealsForTiming(timing) : [], null);
       nextDays[nextDate] = destination;
     }
-    const nextTimingId = timings.some((item) => item.id === destination.timingTemplateId) ? destination.timingTemplateId : 'omogeneo';
+    const nextTimingId = timings.some((item) => item.id === destination.timingTemplateId) ? destination.timingTemplateId : DEFAULT_BUILT_IN_TIMING_ID;
     setDiaryDays(nextDays);
     setActiveDiaryDate(nextDate);
     setTarget({ ...destination.target });
@@ -301,8 +320,29 @@ export function App() {
     else if (dateModalMode === 'copy-meal') copyActiveMealTo(date);
   };
 
+  const changeStartingMacro = (key: keyof MacroTarget, value: string | number) => {
+    setTarget((current) => ({ ...current, [key]: safeNumber(value) }));
+    setSetupProgress((current) => ({ ...current, target: false, generated: false }));
+  };
+
+  const confirmStartingTarget = () => {
+    if (kcalFromMacros(target) <= 0 || target.protein <= 0 || target.fat <= 0) {
+      setStatus('Inserisci un target valido: proteine e grassi devono essere maggiori di zero.');
+      return;
+    }
+    setSetupProgress((current) => ({ ...current, target: true, generated: false }));
+    setStatus('Macro di partenza confermati. Ora scegli il Timing.');
+  };
+
+  const chooseTiming = (id: string) => {
+    setActiveTimingId(id);
+    setSetupProgress((current) => ({ ...current, timing: true, generated: false }));
+  };
+
   const generate = (regenerate = false) => {
     if (!activeTiming) return;
+    if (!setupProgress.target) { setStatus('Prima conferma i macro di partenza.'); return; }
+    if (!setupProgress.timing) { setStatus('Prima scegli e conferma il Timing.'); return; }
     try {
       const nextSeed = regenerate ? attemptSeed + 1 : attemptSeed;
       if (regenerate && menu?.lockedMealIndexes?.length) {
@@ -331,6 +371,7 @@ export function App() {
       });
       setAttemptSeed(nextSeed);
       setMenu(result);
+      setSetupProgress((current) => ({ ...current, generated: true }));
       setStatus(result.status === 'best_feasible' ? 'Generata la migliore soluzione possibile.' : 'Menu generato e validato.');
     } catch (error) {
       setStatus(`Generazione non riuscita: ${String(error)}`);
@@ -339,6 +380,8 @@ export function App() {
 
   const completeManualDay = (regenerate = false) => {
     if (!activeTiming || !completionContext) return;
+    if (!setupProgress.target) { setStatus('Prima conferma i macro di partenza.'); return; }
+    if (!setupProgress.timing) { setStatus('Prima scegli e conferma il Timing.'); return; }
     if (!completionNeeded(completionContext.residualTarget)) {
       setCompletionPlan(null);
       setStatus('Il target giornaliero e gia coperto: non ci sono macro da completare.');
@@ -479,6 +522,7 @@ export function App() {
     }
     setCustomTimings((current) => [editingTiming, ...current.filter((timing) => timing.id !== editingTiming.id)]);
     setActiveTimingId(editingTiming.id);
+    setSetupProgress((current) => ({ ...current, timing: true, generated: false }));
     setEditingTiming(null);
     setStatus('Timing salvato localmente.');
   };
@@ -710,8 +754,8 @@ export function App() {
       <header className="hero">
         <div>
           <p className="eyebrow">BUILDER NUTRITION</p>
-          <h1>{tab === 'menu' ? 'Oggi' : tab === 'week' ? 'Settimana' : tab === 'progress' ? 'Progressi' : tab === 'profile' ? 'Profilo' : 'Nutrition Engine V2'}</h1>
-          <p className="muted">Macro + timing + generazione automatica. Diario locale, nessun login.</p>
+          <h1>{tab === 'menu' ? 'Oggi' : tab === 'week' ? 'Settimana' : tab === 'progress' ? 'Progressi' : tab === 'profile' ? 'Profilo' : tab === 'timing' ? 'Timing' : tab === 'foods' ? 'Alimenti' : 'Salvati'}</h1>
+          <p className="muted">Imposta i macro, scegli il timing e crea automaticamente il tuo menu giornaliero.</p>
         </div>
         <div className="kcal-badge">{kcal.toFixed(0)}<small>kcal</small></div>
       </header>
@@ -719,6 +763,16 @@ export function App() {
       {status && <div className="status" role="status">{status}</div>}
 
       {tab === 'menu' && <>
+        {!setupProgress.generated && <SetupGuideCard
+          targetReady={setupProgress.target}
+          timingReady={setupProgress.timing}
+          generated={setupProgress.generated}
+          activeTimingName={activeTiming?.name || 'Timing'}
+          onProfile={() => setTab('profile')}
+          onManualTarget={() => { setMenuMode('automatic'); window.setTimeout(() => document.getElementById('starting-target-card')?.scrollIntoView({ behavior: 'smooth' }), 80); }}
+          onTiming={() => { setMenuMode('automatic'); setShowTimingSelect(true); }}
+          onGenerate={() => { setMenuMode('automatic'); generate(false); }}
+        />}
         <DiaryDateBar
           date={activeDiaryDate}
           onPrevious={() => openDiaryDate(shiftDateKey(activeDiaryDate, -1))}
@@ -730,24 +784,26 @@ export function App() {
         <TodaySummaryCard target={target} consumed={manualActual} onOpenGenerator={() => setMenuMode('automatic')} />
         <div className="mode-switch diary-mode-switch">
           <button className={menuMode === 'manual' ? 'active' : ''} onClick={() => setMenuMode('manual')}>Diario</button>
-          <button className={menuMode === 'automatic' ? 'active' : ''} onClick={() => setMenuMode('automatic')}>Generatore</button>
+          <button className={menuMode === 'automatic' ? 'active' : ''} onClick={() => setMenuMode('automatic')}>Crea menu</button>
         </div>
 
         {menuMode === 'automatic' && <>
-          <section className="card">
-            <h2>Target giornaliero</h2>
+          <section className="card" id="starting-target-card">
+            <div className="row-between"><div><p className="eyebrow red">PASSO 1</p><h2>Macro di partenza</h2></div><span className={`setup-inline-status ${setupProgress.target ? 'done' : ''}`}>{setupProgress.target ? 'Confermati' : 'Da confermare'}</span></div>
+            <p className="muted">Inserisci il target giornaliero che Builder deve rispettare. In alternativa puoi calcolarlo dalla sezione Profilo.</p>
             <div className="macro-grid">
-              <label>Carboidrati<input type="number" min="0" value={target.carbs} onChange={(e) => setTarget({ ...target, carbs: safeNumber(e.target.value) })} /><span>g</span></label>
-              <label>Proteine<input type="number" min="0" value={target.protein} onChange={(e) => setTarget({ ...target, protein: safeNumber(e.target.value) })} /><span>g</span></label>
-              <label>Grassi<input type="number" min="0" value={target.fat} onChange={(e) => setTarget({ ...target, fat: safeNumber(e.target.value) })} /><span>g</span></label>
+              <label>Carboidrati<input type="number" min="0" value={target.carbs} onChange={(e) => changeStartingMacro('carbs', e.target.value)} /><span>g</span></label>
+              <label>Proteine<input type="number" min="0" value={target.protein} onChange={(e) => changeStartingMacro('protein', e.target.value)} /><span>g</span></label>
+              <label>Grassi<input type="number" min="0" value={target.fat} onChange={(e) => changeStartingMacro('fat', e.target.value)} /><span>g</span></label>
             </div>
+            <div className="setup-target-actions"><button className="secondary" onClick={() => setTab('profile')}>Calcola dal Profilo/TDEE</button><button className="primary" onClick={confirmStartingTarget}>Conferma macro</button></div>
           </section>
 
           <section className="card">
-            <div className="row-between"><h2>Timing</h2><button className="ghost" onClick={() => setTab('timing')}>Gestisci</button></div>
-            <button className="selector-card" onClick={() => setShowTimingSelect(true)}>
+            <div className="row-between"><div><p className="eyebrow red">PASSO 2</p><h2>Timing</h2></div><span className={`setup-inline-status ${setupProgress.timing ? 'done' : ''}`}>{setupProgress.timing ? 'Scelto' : 'Da scegliere'}</span></div><button className="selector-card" onClick={() => setShowTimingSelect(true)}>
               <span><small>Timing attivo</small><strong>{activeTiming.name}</strong><em>{activeTiming.meals.length} pasti</em></span><b>›</b>
             </button>
+            <div className="setup-timing-actions"><button className="secondary small" onClick={() => setShowTimingSelect(true)}>Scegli scenario</button><button className="ghost small" onClick={() => setTab('timing')}>Gestisci Timing</button></div>
             <div className="meal-targets">
               {mealTargets.map((meal, index) => <div className="target-chip" key={`${activeTimingId}-${index}`}><strong>{meal.name}</strong><span>{meal.carbs.toFixed(0)}C · {meal.protein.toFixed(0)}P · {meal.fat.toFixed(0)}F</span></div>)}
             </div>
@@ -829,16 +885,17 @@ export function App() {
         target={target}
         onApplyTarget={(nextTarget) => {
           setTarget({ ...nextTarget });
+          setSetupProgress((current) => ({ ...current, target: true, generated: false }));
           setStatus(`Target aggiornato: ${nextTarget.carbs}C / ${nextTarget.protein}P / ${nextTarget.fat}F.`);
         }}
       />}
 
-      {tab === 'profile' && <ProfilePanel currentTarget={target} onApplyTarget={(nextTarget) => { setTarget({ ...nextTarget }); setStatus(`Target profilo applicato: ${nextTarget.carbs.toFixed(0)}C / ${nextTarget.protein.toFixed(0)}P / ${nextTarget.fat.toFixed(0)}F.`); }} />}
+      {tab === 'profile' && <ProfilePanel currentTarget={target} onApplyTarget={(nextTarget) => { setTarget({ ...nextTarget }); setSetupProgress((current) => ({ ...current, target: true, generated: false })); setMenuMode('automatic'); setTab('menu'); setStatus(`Macro applicati dal Profilo: ${nextTarget.carbs.toFixed(0)}C / ${nextTarget.protein.toFixed(0)}P / ${nextTarget.fat.toFixed(0)}F. Ora scegli il Timing.`); }} />}
 
       {tab === 'timing' && <section className="card">
         <div className="row-between"><h2>Gestione timing</h2><button className="primary small" onClick={() => setEditingTiming(createEmptyTiming('Nuovo timing', 5))}>Nuovo</button></div>
-        <p className="muted">I timing Builder sono preinstallati. Duplicali per modificarli oppure creane uno da zero.</p>
-        <div className="timing-list">{timings.map((timing) => <div className="list-row" key={timing.id}><button className="list-main" onClick={() => setActiveTimingId(timing.id)}><strong>{timing.name}</strong><span>{timing.meals.length} pasti · {timing.dayKind}</span></button><button className="secondary" onClick={() => setEditingTiming(timing.builtIn ? cloneTimingForEdit(timing) : structuredClone(timing))}>{timing.builtIn ? 'Duplica' : 'Modifica'}</button>{!timing.builtIn && <button className="danger" onClick={() => setCustomTimings((current) => current.filter((item) => item.id !== timing.id))}>Elimina</button>}</div>)}</div>
+        <p className="muted">Scegli lo scenario in base a quando ti alleni e al numero di pasti. Il Timing distribuisce i macro giornalieri: non modifica calorie o obiettivo.</p>
+        <div className="timing-list">{timings.map((timing) => <div className="list-row" key={timing.id}><button className="list-main" onClick={() => chooseTiming(timing.id)}><strong>{timing.name}</strong><span>{timing.meals.length} pasti · {timing.dayKind === 'workout' ? 'allenamento' : timing.dayKind === 'off' ? 'riposo' : 'generale'}{timing.description ? ` · ${timing.description}` : ''}</span></button><button className="secondary" onClick={() => setEditingTiming(timing.builtIn ? cloneTimingForEdit(timing) : structuredClone(timing))}>{timing.builtIn ? 'Duplica' : 'Modifica'}</button>{!timing.builtIn && <button className="danger" onClick={() => setCustomTimings((current) => current.filter((item) => item.id !== timing.id))}>Elimina</button>}</div>)}</div>
       </section>}
 
       {tab === 'foods' && <section className="card">
@@ -881,7 +938,7 @@ export function App() {
         onDelete={(id) => setSavedMealTemplates((current) => current.filter((entry) => entry.id !== id))}
       />
       <TimingEditorModal timing={editingTiming} onChange={setEditingTiming} onClose={() => setEditingTiming(null)} onSave={saveTiming} onResize={resizeTiming} onDistribute={distributeEqually} onUpdateMeal={updateEditingMeal} />
-      <TimingSelectModal open={showTimingSelect} timings={timings} activeId={activeTimingId} onClose={() => setShowTimingSelect(false)} onSelect={setActiveTimingId} />
+      <TimingSelectModal open={showTimingSelect} timings={timings} activeId={activeTimingId} onClose={() => setShowTimingSelect(false)} onSelect={chooseTiming} />
       <FoodLibrarySearchModal open={showFoodSearch} title="Cerca alimenti" eyebrow="DATABASE ALIMENTI" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowFoodSearch(false)} onOpenFood={(food) => { setShowFoodSearch(false); openFoodDetail(food); }} />
       <FoodLibrarySearchModal open={showPoolSearch} title="Seleziona alimenti" eyebrow="POOL AUTOMATICO" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowPoolSearch(false)} onOpenFood={(food) => { setShowPoolSearch(false); openFoodDetail(food); }} selectedIds={selectedFoodIds} onToggleSelected={(id) => setSelectedFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])} />
       <FoodPickerModal open={!!manualPickerMealId} foods={manualPickerFoods} query={manualPickerSearch} onQueryChange={setManualPickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setManualPickerMealId(null)} onSelect={(food) => { if (manualPickerMealId) addFoodToManualMeal(manualPickerMealId, food); }} />

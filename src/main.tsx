@@ -10,6 +10,7 @@ import './styles-v09.css';
 import './styles-v10.css';
 import './styles-v101.css';
 import './styles-v102.css';
+import './styles-v104.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
