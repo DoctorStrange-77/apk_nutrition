@@ -3,7 +3,7 @@ import type { LocalFood } from '@/types/nutrition';
 type CoreFoodSeed = Omit<LocalFood, 'source' | 'dataSource' | 'sourceReference' | 'verifiedAt'>;
 
 export const CORE_LIBRARY_VERSION = 'core-2026.09';
-const CORE_SOURCE_REFERENCE = 'CREA Tabelle di Composizione degli Alimenti + USDA FoodData Central';
+const CORE_SOURCE_REFERENCE = 'Riferimenti per la curatela: CREA Tabelle di Composizione degli Alimenti e USDA FoodData Central. Valori App Nutrition, non riproduzione ufficiale dei dataset.';
 
 const RAW_CORE_FOODS: CoreFoodSeed[] = [
   { id:'riso', name:'Riso bianco (crudo)', category:'carb', subcategory:'Amidi', carbs:80, protein:7, fat:0.7, suitable:['lunch','dinner'], grammiMin:50, grammiMax:150 },
@@ -102,6 +102,6 @@ const RAW_CORE_FOODS: CoreFoodSeed[] = [
 export const APP_CORE_FOODS: LocalFood[] = RAW_CORE_FOODS.map((food) => ({
   ...food,
   source: 'core',
-  dataSource: 'CREA+USDA',
+  dataSource: 'App Nutrition Core',
   sourceReference: CORE_SOURCE_REFERENCE,
 }));

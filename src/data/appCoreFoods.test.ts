@@ -25,8 +25,9 @@ describe('App Nutrition core food library', () => {
       expect(ids.has(food.id)).toBe(false);
       ids.add(food.id);
       expect(food.source).toBe('core');
-      expect(['CREA', 'USDA', 'CREA+USDA']).toContain(food.dataSource);
-      expect(food.sourceReference).toBeTruthy();
+      expect(food.dataSource).toBe('App Nutrition Core');
+      expect(food.sourceReference).toContain('CREA');
+      expect(food.sourceReference).toContain('USDA');
       for (const value of [food.carbs, food.protein, food.fat]) {
         expect(Number.isFinite(value)).toBe(true);
         expect(value).toBeGreaterThanOrEqual(0);

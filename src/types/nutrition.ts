@@ -64,7 +64,7 @@ export interface LocalFood {
   mainSourceThreshold?: number;
   suitable: MealTag[];
   source: 'core' | 'builder' | 'manual' | 'barcode' | 'external' | 'recipe';
-  dataSource?: 'CREA' | 'USDA' | 'CREA+USDA' | 'Open Food Facts' | 'User' | 'Recipe';
+  dataSource?: 'App Nutrition Core' | 'Open Food Facts' | 'User' | 'Recipe';
   sourceReference?: string;
   verifiedAt?: string;
   servingName?: string;
