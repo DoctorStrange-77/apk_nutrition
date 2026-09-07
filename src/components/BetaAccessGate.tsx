@@ -121,7 +121,7 @@ export function BetaAccessGate({ children }: Props) {
       <label className="beta-field"><span>Password</span><div className="beta-password"><input type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /><button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? 'Nascondi' : 'Mostra'}</button></div></label>
       {!!message && <div className="beta-error">{message}</div>}
       <button className="primary beta-login-button" type="submit" disabled={busy}>{busy ? 'Accesso…' : 'Accedi'}</button>
-      <small className="beta-version">Builder Nutrition 1.0.4 Beta</small>
+      <small className="beta-version">Builder Nutrition 1.1.0 Beta</small>
     </form></div>;
   }
 
