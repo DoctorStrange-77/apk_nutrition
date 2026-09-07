@@ -187,6 +187,56 @@ const rotate = <T,>(items: T[], amount: number): T[] => {
   return [...items.slice(shift), ...items.slice(0, shift)];
 };
 
+const normalizedFoodText = (food: LocalFood): string =>
+  `${food.id} ${food.name} ${food.subcategory || ''}`.toLowerCase();
+
+const isProteinPowder = (food: LocalFood): boolean => {
+  const text = normalizedFoodText(food);
+  return text.includes('(polvere)')
+    && (text.includes('proteine') || text.includes('whey') || text.includes('caseina'));
+};
+
+const isRapidCarbPowder = (food: LocalFood): boolean => {
+  const text = normalizedFoodText(food);
+  return text.includes('destrosio') || text.includes('maltodestr');
+};
+
+const isSavorySpread = (food: LocalFood): boolean =>
+  normalizedFoodText(food).includes('hummus');
+
+const isSweetCondiment = (food: LocalFood): boolean => {
+  const text = normalizedFoodText(food);
+  return text.includes('marmellata') || text.includes('miele');
+};
+
+const isSavoryWholeProtein = (food: LocalFood): boolean => {
+  const text = normalizedFoodText(food);
+  return ['carne bianca', 'carne rossa', 'pesce', 'legumi/vegetali']
+    .some((token) => text.includes(token))
+    && !isProteinPowder(food);
+};
+
+export const isRealisticMealCombination = (
+  foods: LocalFood[],
+  workoutTiming: MealWorkoutTiming,
+): boolean => {
+  if (!foods.length || foods.length > 4) return false;
+  const proteinPowders = foods.filter(isProteinPowder);
+  const rapidCarbPowders = foods.filter(isRapidCarbPowder);
+  if (proteinPowders.length > 1 || rapidCarbPowders.length > 1) return false;
+
+  const powderCount = proteinPowders.length + rapidCarbPowders.length;
+  if (rapidCarbPowders.length && workoutTiming !== 'pre' && workoutTiming !== 'post') return false;
+  if (powderCount > (workoutTiming === 'pre' || workoutTiming === 'post' ? 2 : 1)) return false;
+
+  if (foods.some(isSavorySpread) && powderCount > 0) return false;
+  if (foods.some(isSweetCondiment) && foods.some(isSavorySpread)) return false;
+  if (foods.some(isSweetCondiment) && foods.some(isSavoryWholeProtein)) return false;
+  if (rapidCarbPowders.length && foods.some(isSavoryWholeProtein)) return false;
+  if (proteinPowders.length && foods.some(isSavoryWholeProtein)) return false;
+  return true;
+};
+
 const contextPenalty = (
   portions: Portion[],
   workoutTiming: MealWorkoutTiming,
@@ -383,12 +433,17 @@ const generateMeal = ({
     for (const fat of fats.slice(0, 3)) combinations.push(uniqueFoods([mix, fat]));
   }
 
-  if (!combinations.length) {
-    for (const food of rotate(sorted, attempt).slice(0, 10)) combinations.push([food]);
+  const realisticCombinations = combinations.filter((combo) =>
+    combo.length > 0 && isRealisticMealCombination(combo, workoutTiming),
+  );
+
+  if (!realisticCombinations.length) {
+    for (const food of rotate(sorted, attempt).slice(0, 10)) {
+      if (isRealisticMealCombination([food], workoutTiming)) realisticCombinations.push([food]);
+    }
   }
 
-  const candidates = combinations
-    .filter((combo) => combo.length > 0 && combo.length <= 5)
+  const candidates = realisticCombinations
     .map((combo) => buildMealCandidate(combo, target, workoutTiming, dayKind, usedFoodIds, dailyTarget, tolerancePercent))
     .sort((a, b) => {
       if (a.withinTolerance !== b.withinTolerance) return a.withinTolerance ? -1 : 1;
