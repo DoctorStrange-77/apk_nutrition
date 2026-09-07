@@ -19,6 +19,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Upgrade npm
+        run: npm install -g npm@11
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
