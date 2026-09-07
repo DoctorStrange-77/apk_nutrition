@@ -27,6 +27,8 @@ export function WebBarcodeScannerModal({ open, onClose, onDetected }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const detectedRef = useRef(false);
+  const onDetectedRef = useRef(onDetected);
+  onDetectedRef.current = onDetected;
   const [message, setMessage] = useState('Inquadra il codice a barre del prodotto.');
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export function WebBarcodeScannerModal({ open, onClose, onDetected }: Props) {
             if (!isValidBarcode(value)) return;
             detectedRef.current = true;
             controlsRef.current?.stop();
-            onDetected(value);
+            onDetectedRef.current(value);
           },
         );
         if (cancelled) controls.stop();
@@ -70,7 +72,7 @@ export function WebBarcodeScannerModal({ open, onClose, onDetected }: Props) {
       const stream = videoRef.current?.srcObject as MediaStream | null;
       stream?.getTracks().forEach((track) => track.stop());
     };
-  }, [open, onDetected]);
+  }, [open]);
 
   return (
     <AppModal open={open} title="Scansiona barcode" eyebrow="FOTOCAMERA" onClose={onClose}>
