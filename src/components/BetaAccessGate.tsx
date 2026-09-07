@@ -108,20 +108,20 @@ export function BetaAccessGate({ children }: Props) {
   };
 
   if (gateState === 'checking') {
-    return <div className="beta-screen"><div className="beta-card beta-loading"><div className="beta-logo">B</div><h1>Builder Nutrition</h1><p>Verifica accesso in corso…</p><div className="beta-spinner" /></div></div>;
+    return <div className="beta-screen"><div className="beta-card beta-loading"><div className="beta-logo">A</div><h1>App Nutrition</h1><p>Verifica accesso in corso…</p><div className="beta-spinner" /></div></div>;
   }
 
   if (gateState === 'signed_out') {
     return <div className="beta-screen"><form className="beta-card" onSubmit={login}>
-      <div className="beta-logo">B</div>
+      <div className="beta-logo">A</div>
       <p className="eyebrow red">ACCESSO BETA</p>
-      <h1>Builder Nutrition</h1>
+      <h1>App Nutrition</h1>
       <p className="beta-subtitle">Inserisci le credenziali ricevute per accedere alla versione di prova.</p>
       <label className="beta-field"><span>Username o email</span><input autoCapitalize="none" autoCorrect="off" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="tester01 o nome@email.it" /></label>
       <label className="beta-field"><span>Password</span><div className="beta-password"><input type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /><button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? 'Nascondi' : 'Mostra'}</button></div></label>
       {!!message && <div className="beta-error">{message}</div>}
       <button className="primary beta-login-button" type="submit" disabled={busy}>{busy ? 'Accesso…' : 'Accedi'}</button>
-      <small className="beta-version">Builder Nutrition 1.1.0 Beta</small>
+      <small className="beta-version">App Nutrition 1.1.1 Beta</small>
     </form></div>;
   }
 
