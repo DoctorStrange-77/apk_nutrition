@@ -1,8 +1,11 @@
 import type { LocalFood } from '@/types/nutrition';
 
-type BuilderFoodSeed = Omit<LocalFood, 'source'>;
+type CoreFoodSeed = Omit<LocalFood, 'source' | 'dataSource' | 'sourceReference' | 'verifiedAt'>;
 
-const RAW_BUILDER_FOODS: BuilderFoodSeed[] = [
+export const CORE_LIBRARY_VERSION = 'core-2026.09';
+const CORE_SOURCE_REFERENCE = 'CREA Tabelle di Composizione degli Alimenti + USDA FoodData Central';
+
+const RAW_CORE_FOODS: CoreFoodSeed[] = [
   { id:'riso', name:'Riso bianco (crudo)', category:'carb', subcategory:'Amidi', carbs:80, protein:7, fat:0.7, suitable:['lunch','dinner'], grammiMin:50, grammiMax:150 },
   { id:'riso_basmati', name:'Riso basmati (crudo)', category:'carb', subcategory:'Amidi', carbs:78, protein:7.5, fat:0.8, suitable:['lunch','dinner'], grammiMin:50, grammiMax:150 },
   { id:'pasta', name:'Pasta di semola (cruda)', category:'carb', subcategory:'Amidi', carbs:75, protein:13.5, fat:1.2, suitable:['lunch','dinner'], grammiMin:50, grammiMax:150 },
@@ -10,8 +13,6 @@ const RAW_BUILDER_FOODS: BuilderFoodSeed[] = [
   { id:'avena', name:"Fiocchi d'avena", category:'carb', subcategory:'Amidi', carbs:66.8, protein:8, fat:7.5, suitable:['breakfast','snack','prenanna'], grammiMin:40, grammiMax:100 },
   { id:'cornflakes', name:'Corn flakes', category:'carb', subcategory:'Amidi', carbs:84, protein:7, fat:1.5, suitable:['breakfast','snack'], grammiMin:30, grammiMax:80 },
   { id:'pane', name:'Pane bianco', category:'carb', subcategory:'Amidi', carbs:56, protein:9, fat:2, suitable:['breakfast','snack','lunch','dinner'], grammiMin:30, grammiMax:100 },
-  { id:'pan_bauletto_bianco_mb', name:'Pan Bauletto Bianco (Mulino Bianco)', category:'carb', subcategory:'Amidi', carbs:48.4, protein:8.5, fat:3.9, suitable:['breakfast','snack','lunch','dinner'], grammiMin:30, grammiMax:120 },
-  { id:'pan_bauletto_integrale_mb', name:'Pan Bauletto Integrale (Mulino Bianco)', category:'carb', subcategory:'Amidi', carbs:38, protein:11, fat:6.8, suitable:['breakfast','snack','lunch','dinner'], grammiMin:30, grammiMax:120 },
   { id:'fette_bisc', name:'Fette biscottate', category:'carb', subcategory:'Amidi', carbs:78, protein:11, fat:2, suitable:['breakfast','snack'], grammiMin:20, grammiMax:60 },
   { id:'gallette', name:'Gallette di riso', category:'carb', subcategory:'Amidi', carbs:81, protein:7, fat:3.5, suitable:['breakfast','snack'], grammiMin:15, grammiMax:50 },
   { id:'gallette_mais', name:'Gallette di mais', category:'carb', subcategory:'Amidi', carbs:82, protein:7, fat:2, suitable:['breakfast','snack'], grammiMin:15, grammiMax:50 },
@@ -20,7 +21,6 @@ const RAW_BUILDER_FOODS: BuilderFoodSeed[] = [
   { id:'mela', name:'Mela', category:'carb', subcategory:'Frutta', carbs:11.4, protein:0.3, fat:0.2, suitable:['breakfast','snack'], grammiMin:100, grammiMax:250 },
   { id:'miele', name:'Miele', category:'carb', subcategory:'Altro', carbs:82, protein:0, fat:0, suitable:['breakfast','snack','prenanna'], grammiMin:10, grammiMax:30, mainSourceThreshold:10 },
   { id:'marmellata_classica', name:'Marmellata classica (frutta)', category:'carb', subcategory:'Zuccheri', carbs:46, protein:0.4, fat:0, suitable:['breakfast','snack'], grammiMin:15, grammiMax:40, simpleSugars:42 },
-  { id:'marmellata_hero', name:'Marmellata Hero Light / Zero', category:'carb', subcategory:'Altro', carbs:11, protein:0.4, fat:0.2, suitable:['breakfast','snack','prenanna'], grammiMin:20, grammiMax:60 },
   { id:'quinoa', name:'Quinoa (cruda)', category:'carb', subcategory:'Amidi', carbs:64, protein:14, fat:6, suitable:['lunch','dinner'], grammiMin:50, grammiMax:120 },
   { id:'farro', name:'Farro (crudo)', category:'carb', subcategory:'Amidi', carbs:67, protein:15, fat:2.5, suitable:['lunch','dinner'], grammiMin:50, grammiMax:120 },
   { id:'patate_dolci', name:'Patate dolci (crude)', category:'carb', subcategory:'Tuberi', carbs:20, protein:1.6, fat:0.1, suitable:['lunch','dinner','snack'], grammiMin:150, grammiMax:400 },
@@ -49,7 +49,6 @@ const RAW_BUILDER_FOODS: BuilderFoodSeed[] = [
   { id:'fiocchi_latte_light', name:'Fiocchi di latte light', category:'protein', subcategory:'Latticini', carbs:3, protein:13, fat:4, suitable:['breakfast','snack','prenanna'], grammiMin:100, grammiMax:250 },
   { id:'skyr', name:'Skyr 0%', category:'protein', subcategory:'Latticini', carbs:4, protein:11, fat:0.2, suitable:['breakfast','snack','prenanna'], grammiMin:100, grammiMax:250 },
   { id:'yog0', name:'Yogurt greco 0%', category:'protein', subcategory:'Latticini', carbs:3.6, protein:9, fat:0.2, suitable:['breakfast','snack','prenanna'], grammiMin:100, grammiMax:250 },
-  { id:'fage_total_0', name:'Yogurt greco Fage Total 0%', category:'protein', subcategory:'Latticini', carbs:3, protein:10.3, fat:0.4, suitable:['breakfast','snack','prenanna'], grammiMin:100, grammiMax:250 },
   { id:'whey', name:'Whey isolate (polvere)', category:'protein', subcategory:'Latticini', carbs:3, protein:90, fat:1, suitable:['breakfast','snack','prenanna'], grammiMin:20, grammiMax:60 },
   { id:'caseina', name:'Caseina micellare (polvere)', category:'protein', subcategory:'Latticini', carbs:4, protein:85, fat:1.5, suitable:['prenanna','snack'], grammiMin:20, grammiMax:60 },
   { id:'budino_proteico', name:'Budino proteico', category:'protein', subcategory:'Latticini', carbs:4, protein:10, fat:0.3, suitable:['snack','prenanna','breakfast'], grammiMin:100, grammiMax:200 },
@@ -98,9 +97,11 @@ const RAW_BUILDER_FOODS: BuilderFoodSeed[] = [
   { id:'tonno_olio', name:"Tonno sott'olio (sgocciolato)", category:'mixed', subcategory:'Pasti completi', carbs:0, protein:25, fat:10, suitable:['lunch','dinner','snack'], grammiMin:80, grammiMax:200 },
   { id:'hummus', name:'Hummus di ceci', category:'mixed', subcategory:'Pasti completi', carbs:14, protein:8, fat:10, suitable:['snack','lunch'], grammiMin:50, grammiMax:150 },
   { id:'latte_soia', name:'Latte di soia', category:'mixed', subcategory:'Prodotti processati', carbs:3, protein:3.3, fat:1.9, suitable:['breakfast','prenanna','snack'], grammiMin:100, grammiMax:300 },
-  { id:'hipro_drink', name:'Danone HiPro Drink', category:'mixed', subcategory:'Snack proteici', carbs:5.5, protein:8.3, fat:0.5, suitable:['snack','breakfast','prenanna'], grammiMin:150, grammiMax:330 },
-  { id:'lidl_protein_pudding', name:'Protein Pudding (Lidl)', category:'mixed', subcategory:'Prodotti processati', carbs:4, protein:10, fat:0.3, suitable:['snack','prenanna'], grammiMin:100, grammiMax:200 },
-  { id:'eurospin_protein_pudding', name:'Pudding proteico (Eurospin)', category:'mixed', subcategory:'Prodotti processati', carbs:4, protein:10, fat:0.4, suitable:['snack','prenanna'], grammiMin:100, grammiMax:200 },
 ];
 
-export const BUILDER_FOODS: LocalFood[] = RAW_BUILDER_FOODS.map((food) => ({ ...food, source: 'builder' }));
+export const APP_CORE_FOODS: LocalFood[] = RAW_CORE_FOODS.map((food) => ({
+  ...food,
+  source: 'core',
+  dataSource: 'CREA+USDA',
+  sourceReference: CORE_SOURCE_REFERENCE,
+}));

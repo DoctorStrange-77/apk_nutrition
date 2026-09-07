@@ -63,7 +63,10 @@ export interface LocalFood {
   grammiMax?: number;
   mainSourceThreshold?: number;
   suitable: MealTag[];
-  source: 'builder' | 'manual' | 'barcode' | 'external' | 'recipe';
+  source: 'core' | 'builder' | 'manual' | 'barcode' | 'external' | 'recipe';
+  dataSource?: 'CREA' | 'USDA' | 'CREA+USDA' | 'Open Food Facts' | 'User' | 'Recipe';
+  sourceReference?: string;
+  verifiedAt?: string;
   servingName?: string;
   servingGrams?: number;
   portionUnits?: FoodPortionUnit[];

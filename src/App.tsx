@@ -21,7 +21,7 @@ import { TimingSelectModal } from '@/components/TimingSelectModal';
 import { NewFoodModal } from '@/components/NewFoodModal';
 import { TimingEditorModal } from '@/components/TimingEditorModal';
 import { WebBarcodeScannerModal } from '@/components/WebBarcodeScannerModal';
-import { BUILDER_FOODS } from '@/data/builderFoods';
+import { APP_CORE_FOODS } from '@/data/appCoreFoods';
 import { BUILT_IN_TIMINGS, DEFAULT_BUILT_IN_TIMING_ID, migrateBuiltInTimingId } from '@/data/builtInTimings';
 import { calculateMealTargets, createEmptyTiming, timingTotals, validateTimingTemplate } from '@/domain/timing';
 import { kcalFromMacros, macrosForManualDay, macrosForManualItem, macrosForManualMeal } from '@/domain/manualMenu';
@@ -33,7 +33,7 @@ import { generatedMenuToManualMeals } from '@/domain/weeklyPlanner';
 import { defaultQuantityMode, gramsFromQuantity, manualItemQuantity, modeLabel, quantityOptions, setManualItemQuantity, switchManualItemMode } from '@/domain/smartPortions';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode, shouldUseWebBarcodeScanner } from '@/services/barcodeService';
-import { lookupOpenFoodFacts } from '@/services/openFoodFactsService';
+import { lookupOpenFoodFacts, searchOpenFoodFacts } from '@/services/openFoodFactsService';
 import { getLocalValue, initLocalDatabase, setLocalValue } from '@/storage/localDatabase';
 import type {
   DiaryDay,
@@ -124,6 +124,8 @@ export function App() {
   const [completionSeed, setCompletionSeed] = useState(0);
   const [status, setStatus] = useState('');
   const [foodSearch, setFoodSearch] = useState('');
+  const [onlineFoodResults, setOnlineFoodResults] = useState<LocalFood[]>([]);
+  const [onlineFoodLoading, setOnlineFoodLoading] = useState(false);
   const [editingTiming, setEditingTiming] = useState<TimingTemplate | null>(null);
   const [editingFood, setEditingFood] = useState<LocalFood | null>(null);
   const [replacementContext, setReplacementContext] = useState<{ mealIndex: number; foodIndex: number } | null>(null);
@@ -146,12 +148,19 @@ export function App() {
   const [manualFood, setManualFood] = useState({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
 
   const timings = useMemo(() => [...BUILT_IN_TIMINGS, ...customTimings], [customTimings]);
+  const coreFoods = useMemo(
+    () => APP_CORE_FOODS.map((food) => foodOverrides[food.id] || food).filter((food) => !deletedFoodIds.includes(food.id)),
+    [foodOverrides, deletedFoodIds],
+  );
   const foods = useMemo(() => {
-    const base = BUILDER_FOODS.map((food) => foodOverrides[food.id] || food).filter((food) => !deletedFoodIds.includes(food.id));
     const custom = customFoods.filter((food) => !deletedFoodIds.includes(food.id));
     const recipeFoods = recipes.map(recipeToLocalFood).filter((food) => !deletedFoodIds.includes(food.id));
-    return [...base, ...custom, ...recipeFoods];
-  }, [customFoods, foodOverrides, deletedFoodIds, recipes]);
+    return [...coreFoods, ...custom, ...recipeFoods];
+  }, [coreFoods, customFoods, deletedFoodIds, recipes]);
+  const generatorFoods = useMemo(
+    () => selectedFoodIds.length ? foods.filter((food) => selectedFoodIds.includes(food.id)) : coreFoods,
+    [foods, coreFoods, selectedFoodIds],
+  );
   const activeTiming = timings.find((timing) => timing.id === activeTimingId) || timings[0];
   const kcal = kcalFromMacros(target);
   const mealTargets = activeTiming ? calculateMealTargets(target, activeTiming) : [];
@@ -162,13 +171,17 @@ export function App() {
   const replacementSuggestions = useMemo(() => {
     if (!replacementOriginal) return [];
     const originalFood = foods.find((food) => food.id === replacementOriginal.foodId);
-    const pool = selectedFoodIds.length ? foods.filter((food) => selectedFoodIds.includes(food.id)) : foods;
-    return suggestEquivalentFoods(replacementOriginal, originalFood, pool, 16);
-  }, [replacementOriginal, foods, selectedFoodIds]);
+    return suggestEquivalentFoods(replacementOriginal, originalFood, generatorFoods, 16);
+  }, [replacementOriginal, foods, generatorFoods]);
   const filteredFoods = useMemo(() => {
     const query = foodSearch.trim().toLowerCase();
     return foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.subcategory || ''} ${food.barcode || ''}`.toLowerCase().includes(query));
   }, [foods, foodSearch]);
+  const foodSearchResults = useMemo(() => {
+    if (!foodSearch.trim()) return filteredFoods;
+    const merged = [...filteredFoods, ...onlineFoodResults];
+    return [...new Map(merged.map((food) => [food.id, food])).values()];
+  }, [filteredFoods, onlineFoodResults, foodSearch]);
   const recipePickerFoods = useMemo(() => {
     const query = recipePickerSearch.trim().toLowerCase();
     return foods.filter((food) => food.source !== 'recipe' && (!query || `${food.name} ${food.brand || ''} ${food.barcode || ''}`.toLowerCase().includes(query))).slice(0, 80);
@@ -193,6 +206,41 @@ export function App() {
       return ar !== br ? ar - br : a.name.localeCompare(b.name);
     }).slice(0, 60);
   }, [foods, manualPickerSearch, favoriteFoodIds, recentFoodIds]);
+
+  useEffect(() => {
+    if (!showFoodSearch && !showPoolSearch) {
+      setOnlineFoodResults([]);
+      setOnlineFoodLoading(false);
+      return;
+    }
+
+    const query = foodSearch.trim();
+    if (query.length < 2) {
+      setOnlineFoodResults([]);
+      setOnlineFoodLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setOnlineFoodLoading(true);
+      void searchOpenFoodFacts(query, 24)
+        .then((results) => {
+          if (!cancelled) setOnlineFoodResults(results);
+        })
+        .catch(() => {
+          if (!cancelled) setOnlineFoodResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setOnlineFoodLoading(false);
+        });
+    }, 650);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [foodSearch, showFoodSearch, showPoolSearch]);
 
   useEffect(() => {
     void (async () => {
@@ -353,7 +401,7 @@ export function App() {
         const regenerated = generateNutritionMenu({
           target: lockContext.residualTarget,
           timing: lockContext.residualTiming,
-          foods,
+          foods: generatorFoods,
           selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
           attemptSeed: nextSeed,
           dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
@@ -367,7 +415,7 @@ export function App() {
       const result = generateNutritionMenu({
         target,
         timing: activeTiming,
-        foods,
+        foods: generatorFoods,
         selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
         attemptSeed: nextSeed,
         dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
@@ -395,7 +443,7 @@ export function App() {
       const result = generateNutritionMenu({
         target: completionContext.residualTarget,
         timing: completionContext.residualTiming,
-        foods,
+        foods: generatorFoods,
         selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
         attemptSeed: nextSeed,
         dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
@@ -444,7 +492,7 @@ export function App() {
       const replacement = generateNutritionMenu({
         target: sourceMeal.target,
         timing: singleTiming,
-        foods,
+        foods: generatorFoods,
         selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
         attemptSeed: nextSeed,
         dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
@@ -573,8 +621,8 @@ export function App() {
       grammiMin: editingFood.grammiMin == null ? undefined : safeNumber(editingFood.grammiMin),
       grammiMax: editingFood.grammiMax == null ? undefined : safeNumber(editingFood.grammiMax),
     };
-    const isBuilder = BUILDER_FOODS.some((food) => food.id === normalized.id);
-    if (isBuilder) {
+    const isCore = APP_CORE_FOODS.some((food) => food.id === normalized.id);
+    if (isCore) {
       setFoodOverrides((current) => ({ ...current, [normalized.id]: normalized }));
       setDeletedFoodIds((current) => current.filter((id) => id !== normalized.id));
     } else {
@@ -593,8 +641,8 @@ export function App() {
       return;
     }
     const id = editingFood.id;
-    const isBuilder = BUILDER_FOODS.some((food) => food.id === id);
-    if (isBuilder) {
+    const isCore = APP_CORE_FOODS.some((food) => food.id === id);
+    if (isCore) {
       setDeletedFoodIds((current) => current.includes(id) ? current : [...current, id]);
       setFoodOverrides((current) => { const next = { ...current }; delete next[id]; return next; });
     } else {
@@ -613,8 +661,14 @@ export function App() {
     setEditingFood(structuredClone(food));
   };
 
+  const togglePoolFood = (id: string) => {
+    const food = foodSearchResults.find((item) => item.id === id) || foods.find((item) => item.id === id);
+    if (food?.source === 'external') setCustomFoods((current) => [food, ...current.filter((item) => item.id !== food.id)]);
+    setSelectedFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  };
+
   const resolveBarcode = async (barcode: string) => {
-    const localFood = foods.find((food) => food.barcode === barcode);
+    const localFood = foods.find((food) => food.barcode === barcode && food.dataSource === 'Open Food Facts');
     if (localFood) {
       setFoodSearch(localFood.name);
       openFoodDetail(localFood);
@@ -834,8 +888,8 @@ export function App() {
 
           <section className="card">
             <div className="row-between"><h2>Pool alimenti</h2><button className="ghost" onClick={() => { setFoodSearch(''); setShowPoolSearch(true); }}>Scegli</button></div>
-            <p className="muted">{selectedFoodIds.length ? `${selectedFoodIds.length} alimenti selezionati: il motore usera solo questi.` : `Pool completo: ${foods.length} alimenti disponibili, incluse le ricette.`}</p>
-            {selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Usa tutto il database</button>}
+            <p className="muted">{selectedFoodIds.length ? `${selectedFoodIds.length} alimenti selezionati: il motore userà solo questi.` : `Core automatico: ${coreFoods.length} alimenti essenziali curati su riferimenti CREA/USDA.`}</p>
+            {selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Ripristina Core automatico</button>}
           </section>
           <div className="actions"><button className="primary" onClick={() => generate(false)}>Genera menu</button><button className="secondary" onClick={() => generate(true)} disabled={!menu}>{menu?.lockedMealIndexes?.length ? 'Rigenera non bloccati' : 'Rigenera'}</button></div>
           {menu && <section className="card result-card">
@@ -894,7 +948,7 @@ export function App() {
       </>}
 
       {tab === 'week' && <WeeklyPlannerPanel
-        foods={foods}
+        foods={generatorFoods}
         timings={timings}
         defaultTarget={target}
         defaultTimingId={activeTimingId}
@@ -923,7 +977,7 @@ export function App() {
 
       {tab === 'foods' && <section className="card">
         <div className="row-between foods-heading"><div><p className="eyebrow red">LIBRERIA</p><h2>Database alimenti</h2></div><div className="button-group"><button className="secondary" onClick={() => { setFoodSearch(''); setShowFoodSearch(true); }}>Cerca</button><button className="secondary" onClick={() => setShowNewFood(true)}>+ Alimento</button><button className="secondary" onClick={() => setEditingRecipe(createEmptyRecipe())}>+ Ricetta</button><button className="primary" onClick={() => void scanBarcode()}>Scansiona</button></div></div>
-        <p className="muted">Alimenti predefiniti, personali, acquisiti tramite barcode e ricette. Le ricette possono essere usate anche dal generatore automatico.</p>
+        <p className="muted">Il Core alimentare è usato dal generatore automatico. Ricerca e barcode usano Open Food Facts; prodotti personali e ricette entrano nel generatore solo se li selezioni nel Pool alimenti.</p>
         <div className="food-list browse-food-list">{foods.slice(0, 100).map((food) => <button className="food-browser-row" key={food.id} onClick={() => openFoodDetail(food)}><span className="food-avatar small">{food.source === 'recipe' ? 'R' : food.name.slice(0,1).toUpperCase()}</span><span><strong>{food.name}</strong><small>{foodMacros(food)} · {food.source}{food.brand ? ` · ${food.brand}` : ''}{food.servingName ? ` · ${food.servingName} ${food.servingGrams}g` : ''}</small></span><b>›</b></button>)}</div>
       </section>}
 
@@ -962,8 +1016,8 @@ export function App() {
       />
       <TimingEditorModal timing={editingTiming} onChange={setEditingTiming} onClose={() => setEditingTiming(null)} onSave={saveTiming} onResize={resizeTiming} onDistribute={distributeEqually} onUpdateMeal={updateEditingMeal} />
       <TimingSelectModal open={showTimingSelect} timings={timings} activeId={activeTimingId} onClose={() => setShowTimingSelect(false)} onSelect={chooseTiming} />
-      <FoodLibrarySearchModal open={showFoodSearch} title="Cerca alimenti" eyebrow="DATABASE ALIMENTI" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowFoodSearch(false)} onOpenFood={(food) => { setShowFoodSearch(false); openFoodDetail(food); }} />
-      <FoodLibrarySearchModal open={showPoolSearch} title="Seleziona alimenti" eyebrow="POOL AUTOMATICO" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowPoolSearch(false)} onOpenFood={(food) => { setShowPoolSearch(false); openFoodDetail(food); }} selectedIds={selectedFoodIds} onToggleSelected={(id) => setSelectedFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])} />
+      <FoodLibrarySearchModal open={showFoodSearch} title="Cerca alimenti" eyebrow={onlineFoodLoading ? 'RICERCA OPEN FOOD FACTS...' : 'CORE + OPEN FOOD FACTS'} foods={foodSearchResults.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowFoodSearch(false)} onOpenFood={(food) => { setShowFoodSearch(false); openFoodDetail(food); }} />
+      <FoodLibrarySearchModal open={showPoolSearch} title="Seleziona alimenti" eyebrow={onlineFoodLoading ? 'RICERCA OPEN FOOD FACTS...' : 'CORE + OPEN FOOD FACTS'} foods={foodSearchResults.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowPoolSearch(false)} onOpenFood={(food) => { setShowPoolSearch(false); openFoodDetail(food); }} selectedIds={selectedFoodIds} onToggleSelected={togglePoolFood} />
       <FoodPickerModal open={!!manualPickerMealId} foods={manualPickerFoods} query={manualPickerSearch} onQueryChange={setManualPickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setManualPickerMealId(null)} onSelect={(food) => { if (manualPickerMealId) addFoodToManualMeal(manualPickerMealId, food); }} />
       <FoodPickerModal open={recipePickerOpen} foods={recipePickerFoods} query={recipePickerSearch} onQueryChange={setRecipePickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setRecipePickerOpen(false)} onSelect={addRecipeIngredient} />
       <WebBarcodeScannerModal
