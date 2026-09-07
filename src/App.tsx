@@ -22,6 +22,7 @@ import { NewFoodModal } from '@/components/NewFoodModal';
 import { TimingEditorModal } from '@/components/TimingEditorModal';
 import { WebBarcodeScannerModal } from '@/components/WebBarcodeScannerModal';
 import { APP_CORE_FOODS } from '@/data/appCoreFoods';
+import { FOOD_PREFERENCE_PRESETS, filterFoodsByPreferencePreset } from '@/data/foodPreferencePresets';
 import { BUILT_IN_TIMINGS, DEFAULT_BUILT_IN_TIMING_ID, migrateBuiltInTimingId } from '@/data/builtInTimings';
 import { calculateMealTargets, createEmptyTiming, timingTotals, validateTimingTemplate } from '@/domain/timing';
 import { kcalFromMacros, macrosForManualDay, macrosForManualItem, macrosForManualMeal } from '@/domain/manualMenu';
@@ -38,6 +39,7 @@ import { getLocalValue, initLocalDatabase, setLocalValue } from '@/storage/local
 import type {
   DiaryDay,
   FoodCategory,
+  FoodPreferencePresetId,
   GeneratedMenu,
   LocalFood,
   MacroTarget,
@@ -113,6 +115,7 @@ export function App() {
   const [diaryDays, setDiaryDays] = useState<Record<string, DiaryDay>>({});
   const [activeDiaryDate, setActiveDiaryDate] = useState(localDateKey());
   const [selectedFoodIds, setSelectedFoodIds] = useState<string[]>([]);
+  const [foodPreferencePresetId, setFoodPreferencePresetId] = useState<FoodPreferencePresetId>('all');
   const [favoriteFoodIds, setFavoriteFoodIds] = useState<string[]>([]);
   const [recentFoodIds, setRecentFoodIds] = useState<string[]>([]);
   const [savedMealTemplates, setSavedMealTemplates] = useState<SavedMealTemplate[]>([]);
@@ -141,6 +144,7 @@ export function App() {
   const [showNewFood, setShowNewFood] = useState(false);
   const [showFoodSearch, setShowFoodSearch] = useState(false);
   const [showPoolSearch, setShowPoolSearch] = useState(false);
+  const [showFoodPresetSelect, setShowFoodPresetSelect] = useState(false);
   const [showTimingSelect, setShowTimingSelect] = useState(false);
   const [showWebBarcodeScanner, setShowWebBarcodeScanner] = useState(false);
   const [dateModalMode, setDateModalMode] = useState<DateModalMode | null>(null);
@@ -157,9 +161,16 @@ export function App() {
     const recipeFoods = recipes.map(recipeToLocalFood).filter((food) => !deletedFoodIds.includes(food.id));
     return [...coreFoods, ...custom, ...recipeFoods];
   }, [coreFoods, customFoods, deletedFoodIds, recipes]);
+  const activeFoodPreset = FOOD_PREFERENCE_PRESETS.find((preset) => preset.id === foodPreferencePresetId) || FOOD_PREFERENCE_PRESETS[0];
+  const presetCoreFoods = useMemo(
+    () => filterFoodsByPreferencePreset(coreFoods, foodPreferencePresetId),
+    [coreFoods, foodPreferencePresetId],
+  );
   const generatorFoods = useMemo(
-    () => selectedFoodIds.length ? foods.filter((food) => selectedFoodIds.includes(food.id)) : coreFoods,
-    [foods, coreFoods, selectedFoodIds],
+    () => selectedFoodIds.length
+      ? filterFoodsByPreferencePreset(foods.filter((food) => selectedFoodIds.includes(food.id)), foodPreferencePresetId)
+      : presetCoreFoods,
+    [foods, presetCoreFoods, selectedFoodIds, foodPreferencePresetId],
   );
   const activeTiming = timings.find((timing) => timing.id === activeTimingId) || timings[0];
   const kcal = kcalFromMacros(target);
@@ -182,6 +193,10 @@ export function App() {
     const merged = [...filteredFoods, ...onlineFoodResults];
     return [...new Map(merged.map((food) => [food.id, food])).values()];
   }, [filteredFoods, onlineFoodResults, foodSearch]);
+  const poolFoodSearchResults = useMemo(
+    () => filterFoodsByPreferencePreset(foodSearchResults, foodPreferencePresetId),
+    [foodSearchResults, foodPreferencePresetId],
+  );
   const recipePickerFoods = useMemo(() => {
     const query = recipePickerSearch.trim().toLowerCase();
     return foods.filter((food) => food.source !== 'recipe' && (!query || `${food.name} ${food.brand || ''} ${food.barcode || ''}`.toLowerCase().includes(query))).slice(0, 80);
@@ -277,6 +292,7 @@ export function App() {
         setMenu(initialDay.generatedMenu ? structuredClone(initialDay.generatedMenu) : null);
         setMenuMode('manual');
         setSelectedFoodIds(snapshot.selectedFoodIds || []);
+        setFoodPreferencePresetId(snapshot.foodPreferencePresetId || 'all');
         setFavoriteFoodIds(snapshot.favoriteFoodIds || []);
         setRecentFoodIds(snapshot.recentFoodIds || []);
       } catch (error) {
@@ -292,7 +308,7 @@ export function App() {
     setManualMeals((current) => syncMealsToTiming(activeTiming, current));
   }, [ready, activeTimingId, activeTiming?.id]);
 
-  useEffect(() => { setCompletionPlan(null); }, [target, activeTimingId, selectedFoodIds]);
+  useEffect(() => { setCompletionPlan(null); }, [target, activeTimingId, selectedFoodIds, foodPreferencePresetId]);
 
   useEffect(() => {
     if (!ready) return;
@@ -305,11 +321,11 @@ export function App() {
     const persistedDays = { ...diaryDays, [activeDiaryDate]: currentDay };
     const snapshot: NutritionAppSnapshot = {
       customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus,
-      manualMeals, lastTarget: target, lastTimingId: activeTimingId, lastMenuMode: menuMode, selectedFoodIds,
+      manualMeals, lastTarget: target, lastTimingId: activeTimingId, lastMenuMode: menuMode, selectedFoodIds, foodPreferencePresetId,
       diaryDays: persistedDays, activeDiaryDate, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes,
     };
     void setLocalValue('snapshot', snapshot).catch((error) => setStatus(`Salvataggio locale: ${String(error)}`));
-  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds, diaryDays, activeDiaryDate, menu, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes]);
+  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds, foodPreferencePresetId, diaryDays, activeDiaryDate, menu, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes]);
 
   const currentDiarySnapshot = () =>
     buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu);
@@ -902,9 +918,18 @@ export function App() {
           </section>
 
           <section className="card">
-            <div className="row-between"><h2>Pool alimenti</h2><button className="ghost" onClick={() => { setFoodSearch(''); setShowPoolSearch(true); }}>Scegli</button></div>
-            <p className="muted">{selectedFoodIds.length ? `${selectedFoodIds.length} alimenti selezionati: il motore userà solo questi.` : `Core automatico: ${coreFoods.length} alimenti essenziali curati su riferimenti CREA/USDA.`}</p>
-            {selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Ripristina Core automatico</button>}
+            <div className="row-between"><h2>Preferenze alimentari</h2><button className="ghost" onClick={() => setShowFoodPresetSelect(true)}>Scegli</button></div>
+            <div className="food-preset-active">
+              <span><small>Preset attivo</small><strong>{activeFoodPreset.name}</strong></span>
+              <b>{presetCoreFoods.length} alimenti</b>
+            </div>
+            <p className="muted">{activeFoodPreset.description}</p>
+          </section>
+
+          <section className="card">
+            <div className="row-between"><h2>Pool alimenti</h2><button className="ghost" onClick={() => { setFoodSearch(''); setShowPoolSearch(true); }}>Personalizza</button></div>
+            <p className="muted">{selectedFoodIds.length ? `${generatorFoods.length} alimenti compatibili selezionati manualmente nel preset ${activeFoodPreset.name}.` : `Il generatore userà automaticamente i ${presetCoreFoods.length} alimenti del preset ${activeFoodPreset.name}.`}</p>
+            {selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Rimuovi personalizzazione del pool</button>}
           </section>
           <div className="actions"><button className="primary" onClick={() => generate(false)}>Genera menu</button><button className="secondary" onClick={() => generate(true)} disabled={!menu}>{menu?.lockedMealIndexes?.length ? 'Rigenera non bloccati' : 'Rigenera'}</button></div>
           {menu && <section className="card result-card">
@@ -1040,7 +1065,7 @@ export function App() {
       <TimingEditorModal timing={editingTiming} onChange={setEditingTiming} onClose={() => setEditingTiming(null)} onSave={saveTiming} onResize={resizeTiming} onDistribute={distributeEqually} onUpdateMeal={updateEditingMeal} />
       <TimingSelectModal open={showTimingSelect} timings={timings} activeId={activeTimingId} onClose={() => setShowTimingSelect(false)} onSelect={chooseTiming} />
       <FoodLibrarySearchModal open={showFoodSearch} title="Cerca alimenti" eyebrow={onlineFoodLoading ? 'RICERCA OPEN FOOD FACTS...' : 'CORE + OPEN FOOD FACTS'} foods={foodSearchResults.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowFoodSearch(false)} onOpenFood={(food) => { setShowFoodSearch(false); openFoodDetail(food); }} />
-      <FoodLibrarySearchModal open={showPoolSearch} title="Seleziona alimenti" eyebrow={onlineFoodLoading ? 'RICERCA OPEN FOOD FACTS...' : 'CORE + OPEN FOOD FACTS'} foods={foodSearchResults.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowPoolSearch(false)} onOpenFood={(food) => { setShowPoolSearch(false); openFoodDetail(food); }} selectedIds={selectedFoodIds} onToggleSelected={togglePoolFood} />
+      <FoodLibrarySearchModal open={showPoolSearch} title="Seleziona alimenti" eyebrow={onlineFoodLoading ? 'RICERCA OPEN FOOD FACTS...' : `PRESET ${activeFoodPreset.name.toUpperCase()}`} foods={poolFoodSearchResults.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowPoolSearch(false)} onOpenFood={(food) => { setShowPoolSearch(false); openFoodDetail(food); }} selectedIds={selectedFoodIds} onToggleSelected={togglePoolFood} />
       <FoodPickerModal open={!!manualPickerMealId} foods={manualPickerFoods} query={manualPickerSearch} onQueryChange={setManualPickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setManualPickerMealId(null)} onSelect={(food) => { if (manualPickerMealId) addFoodToManualMeal(manualPickerMealId, food); }} />
       <FoodPickerModal open={recipePickerOpen} foods={recipePickerFoods} query={recipePickerSearch} onQueryChange={setRecipePickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setRecipePickerOpen(false)} onSelect={addRecipeIngredient} />
       <WebBarcodeScannerModal
@@ -1049,6 +1074,26 @@ export function App() {
         onDetected={(barcode) => { setShowWebBarcodeScanner(false); void resolveBarcode(barcode); }}
       />
       <NewFoodModal open={showNewFood} value={manualFood} onChange={setManualFood} onClose={() => setShowNewFood(false)} onSave={addManualFood} />
+      <ChoicePopup
+        open={showFoodPresetSelect}
+        title="Preferenze alimentari"
+        choices={FOOD_PREFERENCE_PRESETS.map((preset) => ({
+          value: preset.id,
+          label: preset.name,
+          subtitle: preset.description,
+        }))}
+        value={foodPreferencePresetId}
+        onClose={() => setShowFoodPresetSelect(false)}
+        onSelect={(value) => {
+          const next = value as FoodPreferencePresetId;
+          setFoodPreferencePresetId(next);
+          setSelectedFoodIds([]);
+          setMenu(null);
+          setShowFoodPresetSelect(false);
+          const preset = FOOD_PREFERENCE_PRESETS.find((item) => item.id === next);
+          setStatus(`Preset alimentare attivo: ${preset?.name || next}.`);
+        }}
+      />
       <ChoicePopup open={!!quantityPickerItem} title="Unità quantità" choices={quantityPickerItem ? quantityOptions(quantityPickerItem.food).map((option) => ({ value: option.value, label: option.label, subtitle: option.subtitle })) : []} value={quantityPickerItem?.quantityMode || (quantityPickerItem ? defaultQuantityMode(quantityPickerItem.food) : 'grams')} onClose={() => setQuantityPickerContext(null)} onSelect={(mode) => { if (quantityPickerContext) changeManualItemQuantityMode(quantityPickerContext.mealId, quantityPickerContext.itemId, mode); setQuantityPickerContext(null); }} />
       <BottomNav active={tab} onChange={setTab} />
     </main>

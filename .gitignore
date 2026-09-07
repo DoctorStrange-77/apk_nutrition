@@ -1,0 +1,4 @@
+node_modules/
+dist/
+.tmp_install/
+*.tsbuildinfo

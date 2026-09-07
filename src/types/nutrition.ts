@@ -2,6 +2,7 @@ export type DayKind = 'workout' | 'off' | 'recovery';
 export type MealWorkoutTiming = 'pre' | 'post' | 'none';
 export type MealTag = 'breakfast' | 'snack' | 'lunch' | 'dinner' | 'prenanna';
 export type FoodCategory = 'carb' | 'protein' | 'fat' | 'mixed';
+export type FoodPreferencePresetId = 'all' | 'bodybuilding';
 
 export interface MacroTarget {
   carbs: number;
@@ -238,6 +239,7 @@ export interface NutritionAppSnapshot {
   lastTimingId?: string;
   lastMenuMode?: 'automatic' | 'manual';
   selectedFoodIds?: string[];
+  foodPreferencePresetId?: FoodPreferencePresetId;
   diaryDays?: Record<string, DiaryDay>;
   activeDiaryDate?: string;
   favoriteFoodIds?: string[];

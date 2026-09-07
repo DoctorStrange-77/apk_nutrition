@@ -658,6 +658,19 @@ input:focus,select:focus { border-color:#d32932; box-shadow:0 0 0 3px rgba(211,4
 .source-alternative-chip:hover,.source-alternative-chip:focus-visible {
   border-color:rgba(255,68,78,.34); background:rgba(170,20,28,.12); color:#fff;
 }
+.food-preset-active {
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  margin:10px 0 8px; padding:13px 14px; border-radius:14px;
+  border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.025);
+}
+.food-preset-active span { display:grid; gap:3px; }
+.food-preset-active small { color:#777a82; font-size:.68rem; text-transform:uppercase; letter-spacing:.07em; }
+.food-preset-active strong { color:#fff; font-size:.98rem; }
+.food-preset-active b {
+  padding:7px 10px; border-radius:999px; white-space:nowrap;
+  color:#ff8a91; background:rgba(177,20,29,.13); border:1px solid rgba(255,64,75,.18);
+  font-size:.72rem;
+}
 .replacement-original {
   padding:15px; border-radius:16px; border:1px solid rgba(255,72,81,.2);
   background:linear-gradient(145deg,rgba(120,11,18,.19),rgba(255,255,255,.025));
