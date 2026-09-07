@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { BottomNav } from '@/components/BottomNav';
 import { DiaryDateBar } from '@/components/DiaryDateBar';
 import { DateActionModal } from '@/components/DateActionModal';
@@ -775,9 +775,9 @@ export function App() {
     <main className="app-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">BUILDER NUTRITION</p>
+          <p className="eyebrow">APP NUTRITION</p>
           <h1>{tab === 'menu' ? 'Oggi' : tab === 'week' ? 'Settimana' : tab === 'progress' ? 'Progressi' : tab === 'profile' ? 'Profilo' : tab === 'timing' ? 'Timing' : tab === 'foods' ? 'Alimenti' : 'Salvati'}</h1>
-          <p className="muted">Imposta i macro, scegli il timing e crea automaticamente il tuo menu giornaliero.</p>
+          <p className="muted">Imposta i macronutrienti, scegli il timing e crea automaticamente il tuo menu giornaliero.</p>
         </div>
         <div className="kcal-badge">{kcal.toFixed(0)}<small>kcal</small></div>
       </header>
@@ -813,7 +813,7 @@ export function App() {
         {menuMode === 'automatic' && <>
           <section className="card" id="starting-target-card">
             <div className="row-between"><div><p className="eyebrow red">PASSO 1</p><h2>Macro di partenza</h2></div><span className={`setup-inline-status ${setupProgress.target ? 'done' : ''}`}>{setupProgress.target ? 'Confermati' : 'Da confermare'}</span></div>
-            <p className="muted">Inserisci il target giornaliero che Builder deve rispettare. In alternativa puoi calcolarlo dalla sezione Profilo.</p>
+            <p className="muted">Inserisci il target giornaliero che App Nutrition deve rispettare. In alternativa puoi calcolarlo dalla sezione Profilo.</p>
             <div className="macro-grid">
               <label>Carboidrati<input type="number" min="0" value={target.carbs} onChange={(e) => changeStartingMacro('carbs', e.target.value)} /><span>g</span></label>
               <label>Proteine<input type="number" min="0" value={target.protein} onChange={(e) => changeStartingMacro('protein', e.target.value)} /><span>g</span></label>
@@ -923,7 +923,7 @@ export function App() {
 
       {tab === 'foods' && <section className="card">
         <div className="row-between foods-heading"><div><p className="eyebrow red">LIBRERIA</p><h2>Database alimenti</h2></div><div className="button-group"><button className="secondary" onClick={() => { setFoodSearch(''); setShowFoodSearch(true); }}>Cerca</button><button className="secondary" onClick={() => setShowNewFood(true)}>+ Alimento</button><button className="secondary" onClick={() => setEditingRecipe(createEmptyRecipe())}>+ Ricetta</button><button className="primary" onClick={() => void scanBarcode()}>Scansiona</button></div></div>
-        <p className="muted">Alimenti Builder, personali, barcode e ricette. Le ricette possono essere usate anche dal generatore automatico.</p>
+        <p className="muted">Alimenti predefiniti, personali, acquisiti tramite barcode e ricette. Le ricette possono essere usate anche dal generatore automatico.</p>
         <div className="food-list browse-food-list">{foods.slice(0, 100).map((food) => <button className="food-browser-row" key={food.id} onClick={() => openFoodDetail(food)}><span className="food-avatar small">{food.source === 'recipe' ? 'R' : food.name.slice(0,1).toUpperCase()}</span><span><strong>{food.name}</strong><small>{foodMacros(food)} · {food.source}{food.brand ? ` · ${food.brand}` : ''}{food.servingName ? ` · ${food.servingName} ${food.servingGrams}g` : ''}</small></span><b>›</b></button>)}</div>
       </section>}
 
@@ -977,3 +977,4 @@ export function App() {
     </main>
   );
 }
+
