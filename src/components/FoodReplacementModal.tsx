@@ -30,7 +30,7 @@ export function FoodReplacementModal({ open, original, suggestions, onClose, onS
 
       <div className="replacement-intro">
         <strong>Alternative calcolate dal motore</strong>
-        <p>Le proposte sono ordinate per somiglianza nutrizionale. Dopo la scelta Builder riottimizza le grammature del pasto per restare il più vicino possibile al target.</p>
+        <p>Le proposte sono ordinate per somiglianza nutrizionale. Dopo la scelta, App Nutrition riottimizza le grammature del pasto per restare il più vicino possibile al target.</p>
       </div>
 
       <div className="replacement-list">

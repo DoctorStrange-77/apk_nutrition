@@ -1,4 +1,4 @@
-const CACHE_NAME = 'builder-nutrition-v110';
+const CACHE_NAME = 'app-nutrition-v112';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/builder-nutrition-icon.svg'];
 
 self.addEventListener('install', (event) => {
