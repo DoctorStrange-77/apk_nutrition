@@ -6,6 +6,7 @@ import { SmartDayCard } from '@/components/SmartDayCard';
 import { CompletionPlanCard } from '@/components/CompletionPlanCard';
 import { TodaySummaryCard } from '@/components/TodaySummaryCard';
 import { SetupGuideCard } from '@/components/SetupGuideCard';
+import { PwaInstallBanner } from '@/components/PwaInstallBanner';
 import { FoodReplacementModal } from '@/components/FoodReplacementModal';
 import { RecipeEditorModal } from '@/components/RecipeEditorModal';
 import { SavedMealModal } from '@/components/SavedMealModal';
@@ -19,6 +20,7 @@ import { FoodLibrarySearchModal } from '@/components/FoodLibrarySearchModal';
 import { TimingSelectModal } from '@/components/TimingSelectModal';
 import { NewFoodModal } from '@/components/NewFoodModal';
 import { TimingEditorModal } from '@/components/TimingEditorModal';
+import { WebBarcodeScannerModal } from '@/components/WebBarcodeScannerModal';
 import { BUILDER_FOODS } from '@/data/builderFoods';
 import { BUILT_IN_TIMINGS, DEFAULT_BUILT_IN_TIMING_ID, migrateBuiltInTimingId } from '@/data/builtInTimings';
 import { calculateMealTargets, createEmptyTiming, timingTotals, validateTimingTemplate } from '@/domain/timing';
@@ -30,7 +32,7 @@ import { appendSavedMeal, createEmptyRecipe, createSavedMealTemplate, recipeToLo
 import { generatedMenuToManualMeals } from '@/domain/weeklyPlanner';
 import { defaultQuantityMode, gramsFromQuantity, manualItemQuantity, modeLabel, quantityOptions, setManualItemQuantity, switchManualItemMode } from '@/domain/smartPortions';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
-import { scanProductBarcode } from '@/services/barcodeService';
+import { scanProductBarcode, shouldUseWebBarcodeScanner } from '@/services/barcodeService';
 import { lookupOpenFoodFacts } from '@/services/openFoodFactsService';
 import { getLocalValue, initLocalDatabase, setLocalValue } from '@/storage/localDatabase';
 import type {
@@ -138,6 +140,7 @@ export function App() {
   const [showFoodSearch, setShowFoodSearch] = useState(false);
   const [showPoolSearch, setShowPoolSearch] = useState(false);
   const [showTimingSelect, setShowTimingSelect] = useState(false);
+  const [showWebBarcodeScanner, setShowWebBarcodeScanner] = useState(false);
   const [dateModalMode, setDateModalMode] = useState<DateModalMode | null>(null);
   const [copyMealIndex, setCopyMealIndex] = useState<number | null>(null);
   const [manualFood, setManualFood] = useState({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
@@ -610,40 +613,59 @@ export function App() {
     setEditingFood(structuredClone(food));
   };
 
+  const resolveBarcode = async (barcode: string) => {
+    const localFood = foods.find((food) => food.barcode === barcode);
+    if (localFood) {
+      setFoodSearch(localFood.name);
+      openFoodDetail(localFood);
+      setStatus(`Trovato nel database locale: ${localFood.name}`);
+      return;
+    }
+
+    setStatus(`Barcode ${barcode} letto. Ricerca su Open Food Facts...`);
+    try {
+      const externalFood = await lookupOpenFoodFacts(barcode);
+      if (externalFood) {
+        setCustomFoods((current) => [externalFood, ...current.filter((food) => food.barcode !== barcode)]);
+        setFoodSearch(externalFood.name);
+        setEditingFood(structuredClone(externalFood));
+        setManualFood({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
+        setStatus(`Trovato online: ${externalFood.name}${externalFood.brand ? ` - ${externalFood.brand}` : ''}. Valori caricati nella scheda.`);
+        return;
+      }
+      setManualFood((current) => ({ ...current, barcode }));
+      setShowNewFood(true);
+      setStatus(`Barcode ${barcode} non trovato online. Puoi inserirlo manualmente.`);
+    } catch (lookupError) {
+      setManualFood((current) => ({ ...current, barcode }));
+      setShowNewFood(true);
+      const lookupText = String(lookupError);
+      setStatus(
+        lookupText.includes('OPEN_FOOD_FACTS_TIMEOUT') || lookupText.includes('Failed to fetch')
+          ? `Barcode ${barcode} letto, ma la ricerca online non e disponibile.`
+          : `Open Food Facts: ${lookupText}`,
+      );
+    }
+  };
+
   const scanBarcode = async () => {
+    if (shouldUseWebBarcodeScanner()) {
+      setStatus('Consenti la fotocamera per scansionare il barcode.');
+      setShowWebBarcodeScanner(true);
+      return;
+    }
+
     try {
       setStatus('Apertura scanner...');
       const barcode = await scanProductBarcode();
-      const localFood = foods.find((food) => food.barcode === barcode);
-      if (localFood) {
-        setFoodSearch(localFood.name);
-        openFoodDetail(localFood);
-        setStatus(`Trovato nel database locale: ${localFood.name}`);
-        return;
-      }
-      setStatus(`Barcode ${barcode} letto. Ricerca su Open Food Facts...`);
-      try {
-        const externalFood = await lookupOpenFoodFacts(barcode);
-        if (externalFood) {
-          setCustomFoods((current) => [externalFood, ...current.filter((food) => food.barcode !== barcode)]);
-          setFoodSearch(externalFood.name);
-          setEditingFood(structuredClone(externalFood));
-          setManualFood({ name: '', barcode: '', carbs: 0, protein: 0, fat: 0 });
-          setStatus(`Trovato online: ${externalFood.name}${externalFood.brand ? ` - ${externalFood.brand}` : ''}. Valori caricati nella scheda.`);
-          return;
-        }
-        setManualFood((current) => ({ ...current, barcode }));
-        setShowNewFood(true);
-        setStatus(`Barcode ${barcode} non trovato online. Puoi inserirlo manualmente.`);
-      } catch (lookupError) {
-        setManualFood((current) => ({ ...current, barcode }));
-        setShowNewFood(true);
-        const lookupText = String(lookupError);
-        setStatus(lookupText.includes('OPEN_FOOD_FACTS_TIMEOUT') || lookupText.includes('Failed to fetch') ? `Barcode ${barcode} letto, ma la ricerca online non e disponibile.` : `Open Food Facts: ${lookupText}`);
-      }
+      await resolveBarcode(barcode);
     } catch (error) {
       const text = String(error);
-      setStatus(text.includes('SCANNER_MODULE_INSTALLING') ? 'Modulo scanner Android in installazione. Riprova tra poco.' : `Scanner: ${text}`);
+      setStatus(
+        text.includes('SCANNER_MODULE_INSTALLING')
+          ? 'Modulo scanner Android in installazione. Riprova tra poco.'
+          : `Scanner: ${text}`,
+      );
     }
   };
 
@@ -761,6 +783,7 @@ export function App() {
       </header>
 
       {status && <div className="status" role="status">{status}</div>}
+      <PwaInstallBanner />
 
       {tab === 'menu' && <>
         {!setupProgress.generated && <SetupGuideCard
@@ -943,6 +966,11 @@ export function App() {
       <FoodLibrarySearchModal open={showPoolSearch} title="Seleziona alimenti" eyebrow="POOL AUTOMATICO" foods={filteredFoods.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowPoolSearch(false)} onOpenFood={(food) => { setShowPoolSearch(false); openFoodDetail(food); }} selectedIds={selectedFoodIds} onToggleSelected={(id) => setSelectedFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])} />
       <FoodPickerModal open={!!manualPickerMealId} foods={manualPickerFoods} query={manualPickerSearch} onQueryChange={setManualPickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setManualPickerMealId(null)} onSelect={(food) => { if (manualPickerMealId) addFoodToManualMeal(manualPickerMealId, food); }} />
       <FoodPickerModal open={recipePickerOpen} foods={recipePickerFoods} query={recipePickerSearch} onQueryChange={setRecipePickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setRecipePickerOpen(false)} onSelect={addRecipeIngredient} />
+      <WebBarcodeScannerModal
+        open={showWebBarcodeScanner}
+        onClose={() => setShowWebBarcodeScanner(false)}
+        onDetected={(barcode) => { setShowWebBarcodeScanner(false); void resolveBarcode(barcode); }}
+      />
       <NewFoodModal open={showNewFood} value={manualFood} onChange={setManualFood} onClose={() => setShowNewFood(false)} onSave={addManualFood} />
       <ChoicePopup open={!!quantityPickerItem} title="Unità quantità" choices={quantityPickerItem ? quantityOptions(quantityPickerItem.food).map((option) => ({ value: option.value, label: option.label, subtitle: option.subtitle })) : []} value={quantityPickerItem?.quantityMode || (quantityPickerItem ? defaultQuantityMode(quantityPickerItem.food) : 'grams')} onClose={() => setQuantityPickerContext(null)} onSelect={(mode) => { if (quantityPickerContext) changeManualItemQuantityMode(quantityPickerContext.mealId, quantityPickerContext.itemId, mode); setQuantityPickerContext(null); }} />
       <BottomNav active={tab} onChange={setTab} />
