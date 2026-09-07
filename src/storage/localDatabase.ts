@@ -6,16 +6,97 @@ import {
 } from '@capacitor-community/sqlite';
 
 const DB_NAME = 'builder_nutrition_local';
+const WEB_DB_NAME = 'builder_nutrition_web';
+const WEB_STORE = 'app_state';
 const WEB_PREFIX = 'builder-nutrition:';
 
 const sqlite = new SQLiteConnection(CapacitorSQLite);
 let db: SQLiteDBConnection | null = null;
 let initPromise: Promise<void> | null = null;
+let webDbPromise: Promise<IDBDatabase | null> | null = null;
 
 const isWeb = () => Capacitor.getPlatform() === 'web';
 
+const openWebDatabase = (): Promise<IDBDatabase | null> => {
+  if (webDbPromise) return webDbPromise;
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+
+  webDbPromise = new Promise((resolve) => {
+    const request = indexedDB.open(WEB_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(WEB_STORE)) {
+        database.createObjectStore(WEB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+  return webDbPromise;
+};
+
+const webGet = async (key: string): Promise<string | null> => {
+  const database = await openWebDatabase();
+  if (!database) return null;
+  return new Promise((resolve) => {
+    const tx = database.transaction(WEB_STORE, 'readonly');
+    const request = tx.objectStore(WEB_STORE).get(key);
+    request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : null);
+    request.onerror = () => resolve(null);
+  });
+};
+
+const webSet = async (key: string, value: string): Promise<boolean> => {
+  const database = await openWebDatabase();
+  if (!database) return false;
+  return new Promise((resolve) => {
+    const tx = database.transaction(WEB_STORE, 'readwrite');
+    tx.objectStore(WEB_STORE).put(value, key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => resolve(false);
+    tx.onabort = () => resolve(false);
+  });
+};
+
+const webRemove = async (key: string): Promise<boolean> => {
+  const database = await openWebDatabase();
+  if (!database) return false;
+  return new Promise((resolve) => {
+    const tx = database.transaction(WEB_STORE, 'readwrite');
+    tx.objectStore(WEB_STORE).delete(key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => resolve(false);
+    tx.onabort = () => resolve(false);
+  });
+};
+
+const legacyWebGet = (key: string): string | null => {
+  try {
+    return localStorage.getItem(`${WEB_PREFIX}${key}`);
+  } catch {
+    return null;
+  }
+};
+
+const legacyWebSet = (key: string, value: string) => {
+  try {
+    localStorage.setItem(`${WEB_PREFIX}${key}`, value);
+  } catch {
+    // IndexedDB remains the primary web store.
+  }
+};
+
 export async function initLocalDatabase(): Promise<void> {
-  if (isWeb()) return;
+  if (isWeb()) {
+    await openWebDatabase();
+    try {
+      await navigator.storage?.persist?.();
+    } catch {
+      // Best effort on mobile browsers.
+    }
+    return;
+  }
   if (db) return;
   if (initPromise) return initPromise;
 
@@ -47,7 +128,11 @@ export async function initLocalDatabase(): Promise<void> {
 export async function getLocalValue<T>(key: string, fallback: T): Promise<T> {
   if (isWeb()) {
     try {
-      const raw = localStorage.getItem(`${WEB_PREFIX}${key}`);
+      let raw = await webGet(key);
+      if (!raw) {
+        raw = legacyWebGet(key);
+        if (raw) await webSet(key, raw);
+      }
       return raw ? JSON.parse(raw) as T : fallback;
     } catch {
       return fallback;
@@ -69,7 +154,8 @@ export async function getLocalValue<T>(key: string, fallback: T): Promise<T> {
 export async function setLocalValue<T>(key: string, value: T): Promise<void> {
   const encoded = JSON.stringify(value);
   if (isWeb()) {
-    localStorage.setItem(`${WEB_PREFIX}${key}`, encoded);
+    const stored = await webSet(key, encoded);
+    if (!stored) legacyWebSet(key, encoded);
     return;
   }
 
@@ -84,7 +170,12 @@ export async function setLocalValue<T>(key: string, value: T): Promise<void> {
 
 export async function removeLocalValue(key: string): Promise<void> {
   if (isWeb()) {
-    localStorage.removeItem(`${WEB_PREFIX}${key}`);
+    await webRemove(key);
+    try {
+      localStorage.removeItem(`${WEB_PREFIX}${key}`);
+    } catch {
+      // Ignore legacy storage failures.
+    }
     return;
   }
   await initLocalDatabase();
