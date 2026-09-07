@@ -1,5 +1,6 @@
 import type {
   DayKind,
+  GeneratedFoodAlternative,
   GeneratedFoodPortion,
   GeneratedMeal,
   GeneratedMenu,
@@ -519,7 +520,25 @@ const balanceDay = (
   return best;
 };
 
-const toGeneratedPortion = ({ food, grams }: Portion): GeneratedFoodPortion => {
+const alternativeGramsForFood = (food: LocalFood, target: MacroTarget): number => {
+  const density: MacroTarget = {
+    carbs: food.carbs / 100,
+    protein: food.protein / 100,
+    fat: food.fat / 100,
+  };
+  let numerator = 0;
+  let denominator = 0;
+  for (const key of MACROS) {
+    const scale = Math.max(5, Math.abs(target[key]));
+    const weight = 1 / (scale * scale);
+    numerator += density[key] * target[key] * weight;
+    denominator += density[key] * density[key] * weight;
+  }
+  const raw = denominator > 1e-12 ? numerator / denominator : 100;
+  return quantizeFoodPortion(food, raw);
+};
+
+const generatedAlternative = (food: LocalFood, grams: number): GeneratedFoodAlternative => {
   const macros = calculatePortionMacros(food, grams);
   return {
     foodId: food.id,
@@ -531,21 +550,87 @@ const toGeneratedPortion = ({ food, grams }: Portion): GeneratedFoodPortion => {
   };
 };
 
+const buildPortionAlternatives = (
+  portion: Portion,
+  mealPortions: Portion[],
+  allFoods: LocalFood[],
+  tag: MealTag,
+  workoutTiming: MealWorkoutTiming,
+  limit = 4,
+): GeneratedFoodAlternative[] => {
+  const target = calculatePortionMacros(portion.food, portion.grams);
+  const otherFoods = mealPortions.filter((entry) => entry !== portion).map((entry) => entry.food);
+  const occupied = new Set(mealPortions.map((entry) => entry.food.id));
+  const primaryRole = getFoodPrimaryRole(portion.food);
+
+  const sameCategory = allFoods.filter((food) =>
+    food.id !== portion.food.id
+    && !occupied.has(food.id)
+    && food.category === portion.food.category
+    && food.suitable.includes(tag)
+    && isRealisticMealCombination([...otherFoods, food], workoutTiming),
+  );
+  const broader = allFoods.filter((food) =>
+    food.id !== portion.food.id
+    && !occupied.has(food.id)
+    && getFoodPrimaryRole(food) === primaryRole
+    && food.suitable.includes(tag)
+    && isRealisticMealCombination([...otherFoods, food], workoutTiming),
+  );
+  const candidates = uniqueFoods([...sameCategory, ...broader]);
+
+  return candidates
+    .map((food) => {
+      const grams = alternativeGramsForFood(food, target);
+      const macros = calculatePortionMacros(food, grams);
+      const categoryPenalty = food.category === portion.food.category ? 0 : 0.15;
+      const subcategoryPenalty = food.subcategory === portion.food.subcategory ? 0 : 0.03;
+      return { food, grams, score: macroLoss(macros, target) + categoryPenalty + subcategoryPenalty };
+    })
+    .filter((entry) => entry.grams > 0)
+    .sort((a, b) => a.score - b.score || a.food.name.localeCompare(b.food.name))
+    .slice(0, Math.min(5, Math.max(3, limit)))
+    .map((entry) => generatedAlternative(entry.food, entry.grams));
+};
+
+const toGeneratedPortion = (
+  portion: Portion,
+  mealPortions: Portion[],
+  allFoods: LocalFood[],
+  tag: MealTag,
+  workoutTiming: MealWorkoutTiming,
+): GeneratedFoodPortion => {
+  const { food, grams } = portion;
+  const macros = calculatePortionMacros(food, grams);
+  return {
+    foodId: food.id,
+    grams,
+    name: food.name,
+    ...macros,
+    kcal: calculateKcal(macros),
+    source: food.source,
+    alternatives: buildPortionAlternatives(portion, mealPortions, allFoods, tag, workoutTiming, 4),
+  };
+};
+
 const buildGeneratedMenu = (
   runtimeMeals: RuntimeMeal[],
   options: GenerateMenuOptions,
   tolerancePercent: number,
 ): GeneratedMenu => {
   const actual = runtimeActual(runtimeMeals);
-  const generatedMeals: GeneratedMeal[] = runtimeMeals.map((meal) => {
+  const generatedMeals: GeneratedMeal[] = runtimeMeals.map((meal, mealIndex) => {
     const mealActual = combinationMacros(meal.portions);
+    const tag = mealTagFromIndex(mealIndex, meal.name);
     return {
       name: meal.name,
       workoutTiming: meal.workoutTiming,
       target: cloneMacros(meal.target),
       actual: mealActual,
       withinTolerance: withinMacroTolerance(mealActual, meal.target, options.target, tolerancePercent),
-      foods: meal.portions.map(toGeneratedPortion),
+      foods: meal.portions.map((portion) =>
+        toGeneratedPortion(portion, meal.portions, options.foods, tag, meal.workoutTiming),
+      ),
     };
   });
   const allMealsValid = generatedMeals.every((meal) => meal.withinTolerance);

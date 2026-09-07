@@ -1,9 +1,11 @@
 import {
   calculatePortionMacros,
   getPortionStep,
+  isRealisticMealCombination,
   quantizeFoodPortion,
 } from '@/engine/nutritionEngine';
 import type {
+  GeneratedFoodAlternative,
   GeneratedFoodPortion,
   GeneratedMeal,
   GeneratedMenu,
@@ -159,6 +161,43 @@ type RuntimePortion = { food: LocalFood; grams: number };
 const runtimeMacros = (portions: RuntimePortion[]): MacroTarget =>
   portions.reduce((sum, portion) => add(sum, calculatePortionMacros(portion.food, portion.grams)), { ...ZERO });
 
+const inferMealTag = (name: string, index: number): LocalFood['suitable'][number] => {
+  const normalized = name.toLowerCase();
+  if (normalized.includes('colaz')) return 'breakfast';
+  if (normalized.includes('pranzo')) return 'lunch';
+  if (normalized.includes('cena')) return 'dinner';
+  if (normalized.includes('prenanna') || normalized.includes('pre nanna')) return 'prenanna';
+  const defaults: LocalFood['suitable'][number][] = ['breakfast', 'snack', 'lunch', 'snack', 'dinner', 'prenanna'];
+  return defaults[index] || 'snack';
+};
+
+const rebuildAlternatives = (
+  portion: GeneratedFoodPortion,
+  food: LocalFood,
+  mealFoods: LocalFood[],
+  foods: LocalFood[],
+  mealName: string,
+  mealIndex: number,
+  workoutTiming: GeneratedMeal['workoutTiming'],
+): GeneratedFoodAlternative[] => {
+  const tag = inferMealTag(mealName, mealIndex);
+  return suggestEquivalentFoods(portion, food, foods, 24)
+    .filter((entry) => entry.food.suitable.includes(tag))
+    .filter((entry) => isRealisticMealCombination([
+      ...mealFoods.filter((item) => item.id !== food.id),
+      entry.food,
+    ], workoutTiming))
+    .slice(0, 4)
+    .map((entry) => ({
+      foodId: entry.food.id,
+      name: entry.food.name,
+      grams: entry.grams,
+      ...entry.macros,
+      kcal: entry.macros.carbs * 4 + entry.macros.protein * 4 + entry.macros.fat * 9,
+      source: entry.food.source,
+    }));
+};
+
 const optimizeMealPortions = (input: RuntimePortion[], target: MacroTarget): RuntimePortion[] => {
   let best = input.map((entry) => ({ ...entry, grams: clampCandidateGrams(entry.food, entry.grams) }));
   let bestLoss = macroLoss(runtimeMacros(best), target);
@@ -207,9 +246,25 @@ export function replaceFoodSmart(
   });
   const optimized = optimizeMealPortions(runtime, meal.target);
   const actual = runtimeMacros(optimized);
+  const optimizedFoods = optimized.map((entry) => entry.food);
+  const nextFoods = optimized.map((entry) => {
+    const portion = portionFromFood(entry.food, entry.grams);
+    return {
+      ...portion,
+      alternatives: rebuildAlternatives(
+        portion,
+        entry.food,
+        optimizedFoods,
+        foods,
+        meal.name,
+        mealIndex,
+        meal.workoutTiming,
+      ),
+    };
+  });
   const nextMeal: GeneratedMeal = {
     ...meal,
-    foods: optimized.map((entry) => portionFromFood(entry.food, entry.grams)),
+    foods: nextFoods,
     actual,
     withinTolerance: withinTolerance(actual, meal.target, menu.tolerancePercent),
   };

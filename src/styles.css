@@ -634,6 +634,30 @@ input:focus,select:focus { border-color:#d32932; box-shadow:0 0 0 3px rgba(211,4
   color:#ff848a; border:1px solid rgba(255,71,80,.18); background:rgba(145,15,22,.12);
 }
 .replace-food-button:active { transform:scale(.97); background:rgba(177,20,29,.24); }
+.generated-source-block {
+  padding:4px 0 8px;
+  border-bottom:1px solid rgba(255,255,255,.035);
+}
+.generated-source-block:last-of-type { border-bottom:0; }
+.generated-source-block .smart-food-row { border-bottom:0; }
+.source-alternatives { display:grid; gap:6px; padding:2px 0 7px 8px; }
+.source-alternatives > small {
+  margin:0; color:#777a82; font-size:.64rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+}
+.source-alternative-list { display:flex; flex-wrap:wrap; gap:6px; }
+.source-alternative-chip {
+  display:flex; align-items:center; gap:7px; max-width:100%;
+  padding:6px 9px; border-radius:10px; text-align:left;
+  border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.03); color:#c8c9cd;
+  font-size:.68rem;
+}
+.source-alternative-chip span {
+  max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.source-alternative-chip strong { color:#fff; white-space:nowrap; font-size:.67rem; }
+.source-alternative-chip:hover,.source-alternative-chip:focus-visible {
+  border-color:rgba(255,68,78,.34); background:rgba(170,20,28,.12); color:#fff;
+}
 .replacement-original {
   padding:15px; border-radius:16px; border:1px solid rgba(255,72,81,.2);
   background:linear-gradient(145deg,rgba(120,11,18,.19),rgba(255,255,255,.025));

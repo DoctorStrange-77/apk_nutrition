@@ -393,7 +393,6 @@ export function App() {
   const generate = (regenerate = false) => {
     if (!activeTiming) return;
     if (!setupProgress.target) { setStatus('Prima conferma i macro di partenza.'); return; }
-    if (!setupProgress.timing) { setStatus('Prima scegli e conferma il Timing.'); return; }
     try {
       const nextSeed = regenerate ? attemptSeed + 1 : attemptSeed;
       if (regenerate && menu?.lockedMealIndexes?.length) {
@@ -422,7 +421,7 @@ export function App() {
       });
       setAttemptSeed(nextSeed);
       setMenu(result);
-      setSetupProgress((current) => ({ ...current, generated: true }));
+      setSetupProgress((current) => ({ ...current, timing: true, generated: true }));
       setStatus(result.status === 'best_feasible' ? 'Generata la migliore soluzione possibile.' : 'Menu generato e validato.');
     } catch (error) {
       setStatus(`Generazione non riuscita: ${String(error)}`);
@@ -432,7 +431,6 @@ export function App() {
   const completeManualDay = (regenerate = false) => {
     if (!activeTiming || !completionContext) return;
     if (!setupProgress.target) { setStatus('Prima conferma i macro di partenza.'); return; }
-    if (!setupProgress.timing) { setStatus('Prima scegli e conferma il Timing.'); return; }
     if (!completionNeeded(completionContext.residualTarget)) {
       setCompletionPlan(null);
       setStatus('Il target giornaliero e gia coperto: non ci sono macro da completare.');
@@ -516,9 +514,26 @@ export function App() {
       setMenu(next);
       setRecentFoodIds((current) => [suggestion.food.id, ...current.filter((id) => id !== suggestion.food.id)].slice(0, 30));
       setReplacementContext(null);
-      setStatus(`Sostituito con ${suggestion.food.name}. Il pasto e stato riottimizzato sul target.`);
+      setStatus(`Sostituito con ${suggestion.food.name}. Il pasto è stato riottimizzato sul target.`);
     } catch (error) {
       setStatus(`Sostituzione non riuscita: ${String(error)}`);
+    }
+  };
+
+  const applyInlineAlternative = (mealIndex: number, foodIndex: number, foodId: string) => {
+    if (!menu) return;
+    const replacementFood = foods.find((food) => food.id === foodId);
+    if (!replacementFood) {
+      setStatus('Alternativa non disponibile nel pool corrente.');
+      return;
+    }
+    try {
+      const next = replaceFoodSmart(menu, mealIndex, foodIndex, replacementFood, foods);
+      setMenu(next);
+      setRecentFoodIds((current) => [replacementFood.id, ...current.filter((id) => id !== replacementFood.id)].slice(0, 30));
+      setStatus(`Alternativa applicata: ${replacementFood.name}.`);
+    } catch (error) {
+      setStatus(`Alternativa non applicabile: ${String(error)}`);
     }
   };
 
@@ -842,7 +857,7 @@ export function App() {
       {tab === 'menu' && <>
         {!setupProgress.generated && <SetupGuideCard
           targetReady={setupProgress.target}
-          timingReady={setupProgress.timing}
+          timingReady={Boolean(activeTiming)}
           generated={setupProgress.generated}
           activeTimingName={activeTiming?.name || 'Timing'}
           onProfile={() => setTab('profile')}
@@ -877,7 +892,7 @@ export function App() {
           </section>
 
           <section className="card">
-            <div className="row-between"><div><p className="eyebrow red">PASSO 2</p><h2>Timing</h2></div><span className={`setup-inline-status ${setupProgress.timing ? 'done' : ''}`}>{setupProgress.timing ? 'Scelto' : 'Da scegliere'}</span></div><button className="selector-card" onClick={() => setShowTimingSelect(true)}>
+            <div className="row-between"><div><p className="eyebrow red">PASSO 2</p><h2>Timing</h2></div><span className="setup-inline-status done">Attivo</span></div><button className="selector-card" onClick={() => setShowTimingSelect(true)}>
               <span><small>Timing attivo</small><strong>{activeTiming.name}</strong><em>{activeTiming.meals.length} pasti</em></span><b>›</b>
             </button>
             <div className="setup-timing-actions"><button className="secondary small" onClick={() => setShowTimingSelect(true)}>Scegli scenario</button><button className="ghost small" onClick={() => setTab('timing')}>Gestisci Timing</button></div>
@@ -899,7 +914,15 @@ export function App() {
             {menu.meals.map((meal, index) => <article className={`generated-meal ${menu.lockedMealIndexes?.includes(index) ? 'generated-meal-locked' : ''}`} key={`${menu.id}-${index}`}>
               <div className="row-between generated-meal-head"><div className="generated-meal-title"><strong>{meal.name}</strong><span className={meal.withinTolerance ? 'ok' : 'warn'}>{meal.workoutTiming !== 'none' ? meal.workoutTiming.toUpperCase() : ''}</span></div><div className="generated-meal-actions"><button className={`meal-lock-button ${menu.lockedMealIndexes?.includes(index) ? 'active' : ''}`} onClick={() => toggleGeneratedMealLock(index)}>{menu.lockedMealIndexes?.includes(index) ? '🔒 Bloccato' : '🔓 Blocca'}</button><button className="meal-regen-button" disabled={menu.lockedMealIndexes?.includes(index)} onClick={() => regenerateSingleMeal(index)}>Rigenera pasto</button></div></div>
               <small>Target {meal.target.carbs.toFixed(1)}C · {meal.target.protein.toFixed(1)}P · {meal.target.fat.toFixed(1)}F</small>
-              {meal.foods.map((portion, foodIndex) => <div className="smart-food-row" key={`${meal.name}-${portion.foodId}-${foodIndex}`}><button className="food-line food-link smart-food-detail" onClick={() => { const food = foods.find((item) => item.id === portion.foodId); if (food) openFoodDetail(food); }}><span>{portion.name}</span><strong>{portion.grams} g</strong></button><button className="replace-food-button" onClick={() => setReplacementContext({ mealIndex: index, foodIndex })}>Sostituisci</button></div>)}
+              {meal.foods.map((portion, foodIndex) => <div className="generated-source-block" key={`${meal.name}-${portion.foodId}-${foodIndex}`}>
+                <div className="smart-food-row"><button className="food-line food-link smart-food-detail" onClick={() => { const food = foods.find((item) => item.id === portion.foodId); if (food) openFoodDetail(food); }}><span>{portion.name}</span><strong>{portion.grams} g</strong></button><button className="replace-food-button" onClick={() => setReplacementContext({ mealIndex: index, foodIndex })}>Sostituisci</button></div>
+                {!!portion.alternatives?.length && <div className="source-alternatives">
+                  <small>Alternative per questa fonte</small>
+                  <div className="source-alternative-list">
+                    {portion.alternatives.map((alternative) => <button className="source-alternative-chip" key={`${portion.foodId}-alt-${alternative.foodId}`} onClick={() => applyInlineAlternative(index, foodIndex, alternative.foodId)}><span>{alternative.name}</span><strong>{alternative.grams} g</strong></button>)}
+                  </div>
+                </div>}
+              </div>)}
               <small>Reale {meal.actual.carbs.toFixed(1)}C · {meal.actual.protein.toFixed(1)}P · {meal.actual.fat.toFixed(1)}F</small>
             </article>)}
           </section>}

@@ -83,6 +83,17 @@ export interface LocalFood {
   tags?: string[];
 }
 
+export interface GeneratedFoodAlternative {
+  foodId: string;
+  grams: number;
+  name: string;
+  carbs: number;
+  protein: number;
+  fat: number;
+  kcal: number;
+  source: LocalFood['source'];
+}
+
 export interface GeneratedFoodPortion {
   foodId: string;
   grams: number;
@@ -92,6 +103,7 @@ export interface GeneratedFoodPortion {
   fat: number;
   kcal: number;
   source: LocalFood['source'];
+  alternatives?: GeneratedFoodAlternative[];
 }
 
 export interface GeneratedMeal {
