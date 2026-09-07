@@ -17,7 +17,10 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
+
+      - name: Upgrade npm
+        run: npm install -g npm@11
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -33,6 +36,9 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Run tests
+        run: npm test
 
       - name: Build web app
         run: npm run build

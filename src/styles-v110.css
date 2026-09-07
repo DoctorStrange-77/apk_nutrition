@@ -1,0 +1,79 @@
+.pwa-install-banner {
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid rgba(239, 68, 68, .28);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(239, 68, 68, .08), rgba(255, 255, 255, .025));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.pwa-install-banner > div:first-child { display: grid; gap: 4px; }
+.pwa-install-banner strong { font-size: 15px; }
+.pwa-install-banner span { color: var(--muted, #9ca3af); font-size: 13px; line-height: 1.45; }
+.pwa-install-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+.web-barcode-scanner { display: grid; gap: 12px; }
+.web-barcode-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #050607;
+  min-height: 300px;
+  aspect-ratio: 3 / 4;
+}
+.web-barcode-frame video {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  object-fit: cover;
+  display: block;
+}
+.web-barcode-guide {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 42%;
+  height: 16%;
+  border: 2px solid rgba(255,255,255,.9);
+  border-radius: 12px;
+  box-shadow: 0 0 0 999px rgba(0,0,0,.28);
+  pointer-events: none;
+}
+.web-barcode-guide::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 50%;
+  height: 2px;
+  background: #ef4444;
+  box-shadow: 0 0 12px rgba(239,68,68,.9);
+}
+
+@supports (padding: max(0px)) {
+  .app-shell {
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: max(104px, calc(88px + env(safe-area-inset-bottom)));
+  }
+  .bottom-nav {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 640px) {
+  html, body, #root { min-height: 100%; }
+  body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
+  input, select, textarea { font-size: 16px; }
+  .pwa-install-banner { align-items: stretch; flex-direction: column; }
+  .pwa-install-actions { width: 100%; }
+  .pwa-install-actions button { flex: 1; }
+  .web-barcode-frame { min-height: min(62vh, 460px); aspect-ratio: 3 / 4; }
+}
+
+@media (display-mode: standalone) {
+  .pwa-install-banner { display: none; }
+}

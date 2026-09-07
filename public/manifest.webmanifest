@@ -1,0 +1,20 @@
+{
+  "name": "Builder Nutrition",
+  "short_name": "Builder Nutrition",
+  "description": "Macro, timing, diario e generazione automatica del menu.",
+  "lang": "it",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0d10",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "/builder-nutrition-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
