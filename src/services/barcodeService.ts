@@ -4,6 +4,7 @@ import { BarcodeScanner } from '@capacitor-mlkit/barcode-scanning';
 const BARCODE_PATTERN = /^[0-9]{8,14}$/;
 
 export const isValidBarcode = (value: string) => BARCODE_PATTERN.test(value.trim());
+export const shouldUseWebBarcodeScanner = () => Capacitor.getPlatform() === 'web';
 
 export async function scanProductBarcode(): Promise<string> {
   if (Capacitor.getPlatform() === 'web') throw new Error('SCANNER_NATIVE_ONLY');
