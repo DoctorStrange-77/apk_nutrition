@@ -37,11 +37,21 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Run tests
         run: npm test
 
       - name: Build web app
         run: npm run build
+
+      - name: Upload web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: builder-nutrition-web-pwa
+          path: dist
+          if-no-files-found: error
 
       - name: Create Android project
         run: npx cap add android
