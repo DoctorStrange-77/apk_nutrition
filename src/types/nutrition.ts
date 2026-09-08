@@ -150,6 +150,8 @@ export interface LocalFood {
   tags?: string[];
 }
 
+export type SmartAlternativeKind = 'equivalent' | 'easy_digest' | 'fast' | 'no_cook' | 'whole_food';
+
 export interface GeneratedFoodAlternative {
   foodId: string;
   grams: number;
@@ -159,6 +161,8 @@ export interface GeneratedFoodAlternative {
   fat: number;
   kcal: number;
   source: LocalFood['source'];
+  kind?: SmartAlternativeKind;
+  reason?: string;
 }
 
 export interface GeneratedFoodPortion {
@@ -176,6 +180,8 @@ export interface GeneratedFoodPortion {
 export interface GeneratedMeal {
   name: string;
   workoutTiming: MealWorkoutTiming;
+  architecture?: MealArchitectureId;
+  explanations?: string[];
   target: MacroTarget;
   actual: MacroTarget;
   withinTolerance: boolean;

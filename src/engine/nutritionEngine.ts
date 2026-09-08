@@ -11,6 +11,8 @@ import type {
   TimingTemplate,
 } from '@/types/nutrition';
 import { calculateMealTargets } from '@/domain/timing';
+import { alternativeKindLabel, architectureAllowsCombination, classifyAlternativeKind, inferMealArchitecture } from '@/domain/intelligence/mealArchitecture';
+import { explainGeneratedMeal } from '@/domain/intelligence/mealExplain';
 
 export const NUTRITION_ENGINE_VERSION = 'nutrition-engine-v2' as const;
 export const DEFAULT_TOLERANCE_LEVELS = [5, 7, 10, 12, 15, 20] as const;
@@ -435,7 +437,9 @@ const generateMeal = ({
   }
 
   const realisticCombinations = combinations.filter((combo) =>
-    combo.length > 0 && isRealisticMealCombination(combo, workoutTiming),
+    combo.length > 0
+    && isRealisticMealCombination(combo, workoutTiming)
+    && architectureAllowsCombination(tag, workoutTiming, combo),
   );
 
   if (!realisticCombinations.length) {
@@ -538,8 +542,13 @@ const alternativeGramsForFood = (food: LocalFood, target: MacroTarget): number =
   return quantizeFoodPortion(food, raw);
 };
 
-const generatedAlternative = (food: LocalFood, grams: number): GeneratedFoodAlternative => {
+const generatedAlternative = (
+  original: LocalFood,
+  food: LocalFood,
+  grams: number,
+): GeneratedFoodAlternative => {
   const macros = calculatePortionMacros(food, grams);
+  const kind = classifyAlternativeKind(original, food);
   return {
     foodId: food.id,
     grams,
@@ -547,6 +556,8 @@ const generatedAlternative = (food: LocalFood, grams: number): GeneratedFoodAlte
     ...macros,
     kcal: calculateKcal(macros),
     source: food.source,
+    kind,
+    reason: alternativeKindLabel(kind),
   };
 };
 
@@ -590,7 +601,7 @@ const buildPortionAlternatives = (
     .filter((entry) => entry.grams > 0)
     .sort((a, b) => a.score - b.score || a.food.name.localeCompare(b.food.name))
     .slice(0, Math.min(5, Math.max(3, limit)))
-    .map((entry) => generatedAlternative(entry.food, entry.grams));
+    .map((entry) => generatedAlternative(portion.food, entry.food, entry.grams));
 };
 
 const toGeneratedPortion = (
@@ -622,9 +633,11 @@ const buildGeneratedMenu = (
   const generatedMeals: GeneratedMeal[] = runtimeMeals.map((meal, mealIndex) => {
     const mealActual = combinationMacros(meal.portions);
     const tag = mealTagFromIndex(mealIndex, meal.name);
-    return {
+    const architecture = inferMealArchitecture(tag, meal.workoutTiming, meal.portions.map((portion) => portion.food));
+    const generated: GeneratedMeal = {
       name: meal.name,
       workoutTiming: meal.workoutTiming,
+      architecture,
       target: cloneMacros(meal.target),
       actual: mealActual,
       withinTolerance: withinMacroTolerance(mealActual, meal.target, options.target, tolerancePercent),
@@ -632,6 +645,8 @@ const buildGeneratedMenu = (
         toGeneratedPortion(portion, meal.portions, options.foods, tag, meal.workoutTiming),
       ),
     };
+    generated.explanations = explainGeneratedMeal(generated);
+    return generated;
   });
   const allMealsValid = generatedMeals.every((meal) => meal.withinTolerance);
   const dailyValid = dayWithinTolerance(actual, options.target, tolerancePercent);
