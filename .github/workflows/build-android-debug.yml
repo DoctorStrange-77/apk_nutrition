@@ -2,8 +2,6 @@ name: Build Android Debug APK
 
 on:
   push:
-    branches: [main, develop]
-  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -31,8 +29,18 @@ jobs:
       - name: Restore persistent debug keystore
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: builder-nutrition-debug-keystore-v1
+          path: ~/.android
+          key: smart-nutrition-android-signing-v2
+
+      - name: Ensure persistent debug keystore
+        shell: bash
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair               -keystore ~/.android/debug.keystore               -storepass android               -alias androiddebugkey               -keypass android               -dname "CN=Android Debug,O=Smart Nutrition,C=IT"               -keyalg RSA               -keysize 2048               -validity 10000
+          fi
+          echo "Android signing certificate:"
+          keytool -list -v             -keystore ~/.android/debug.keystore             -storepass android             -alias androiddebugkey | grep "SHA256:"
 
       - name: Install dependencies
         run: npm install
