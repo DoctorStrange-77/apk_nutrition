@@ -35,6 +35,7 @@ import { generatedMenuToManualMeals } from '@/domain/weeklyPlanner';
 import { createCustomFoodPreference, resolveCustomFoodPreferenceFoods, validateCustomFoodPreference } from '@/domain/customFoodPreferences';
 import { defaultQuantityMode, gramsFromQuantity, manualItemQuantity, modeLabel, quantityOptions, setManualItemQuantity, switchManualItemMode } from '@/domain/smartPortions';
 import { defaultSmartNutritionSettings, normalizeSmartNutritionSettings } from '@/domain/intelligence/intelligenceState';
+import { rankFoodsByIntelligence, updateFoodSignal } from '@/domain/intelligence/personalFoodIntelligence';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode, shouldUseWebBarcodeScanner } from '@/services/barcodeService';
 import { lookupOpenFoodFacts, searchOpenFoodFacts } from '@/services/openFoodFactsService';
@@ -195,12 +196,12 @@ export function App() {
       : filterFoodsByPreferencePreset(coreFoods, foodPreferencePresetId),
     [activeCustomFoodPreference, foods, coreFoods, foodPreferencePresetId],
   );
-  const generatorFoods = useMemo(
-    () => selectedFoodIds.length
+  const generatorFoods = useMemo(() => {
+    const base = selectedFoodIds.length
       ? preferenceFoods.filter((food) => selectedFoodIds.includes(food.id))
-      : preferenceFoods,
-    [preferenceFoods, selectedFoodIds],
-  );
+      : preferenceFoods;
+    return rankFoodsByIntelligence(base, foodPreferenceSignals, smartSettings.variety, recentFoodIds);
+  }, [preferenceFoods, selectedFoodIds, foodPreferenceSignals, smartSettings.variety, recentFoodIds]);
   const activeTiming = timings.find((timing) => timing.id === activeTimingId) || timings[0];
   const kcal = kcalFromMacros(target);
   const mealTargets = activeTiming ? calculateMealTargets(target, activeTiming) : [];
@@ -522,6 +523,10 @@ export function App() {
     if (!menu || !activeTiming) return;
     const empty = emptyMealsForTiming(activeTiming);
     setManualMeals(applyCompletionPlan(empty, menu, foods));
+    setFoodPreferenceSignals((current) =>
+      menu.meals.flatMap((meal) => meal.foods)
+        .reduce((signals, portion) => updateFoodSignal(signals, portion.foodId, 'use'), current),
+    );
     setMenuMode('manual');
     setCompletionPlan(null);
     setStatus('Menu automatico applicato al diario di oggi.');
@@ -530,6 +535,10 @@ export function App() {
   const applySmartCompletion = () => {
     if (!completionPlan) return;
     setManualMeals((current) => applyCompletionPlan(current, completionPlan, foods));
+    setFoodPreferenceSignals((current) =>
+      completionPlan.meals.flatMap((meal) => meal.foods)
+        .reduce((signals, portion) => updateFoodSignal(signals, portion.foodId, 'use'), current),
+    );
     setCompletionPlan(null);
     setStatus('Completamento applicato alla giornata manuale.');
   };
@@ -568,8 +577,13 @@ export function App() {
   const applyFoodReplacement = (suggestion: FoodReplacementSuggestion) => {
     if (!menu || !replacementContext) return;
     try {
+      const originalId = menu.meals[replacementContext.mealIndex]?.foods[replacementContext.foodIndex]?.foodId;
       const next = replaceFoodSmart(menu, replacementContext.mealIndex, replacementContext.foodIndex, suggestion.food, foods);
       setMenu(next);
+      setFoodPreferenceSignals((current) => {
+        const afterOut = originalId ? updateFoodSignal(current, originalId, 'replace_out') : current;
+        return updateFoodSignal(afterOut, suggestion.food.id, 'replace_in');
+      });
       setRecentFoodIds((current) => [suggestion.food.id, ...current.filter((id) => id !== suggestion.food.id)].slice(0, 30));
       setReplacementContext(null);
       setStatus(`Sostituito con ${suggestion.food.name}. Il pasto è stato riottimizzato sul target.`);
@@ -586,8 +600,13 @@ export function App() {
       return;
     }
     try {
+      const originalId = menu.meals[mealIndex]?.foods[foodIndex]?.foodId;
       const next = replaceFoodSmart(menu, mealIndex, foodIndex, replacementFood, foods);
       setMenu(next);
+      setFoodPreferenceSignals((current) => {
+        const afterOut = originalId ? updateFoodSignal(current, originalId, 'replace_out') : current;
+        return updateFoodSignal(afterOut, replacementFood.id, 'replace_in');
+      });
       setRecentFoodIds((current) => [replacementFood.id, ...current.filter((id) => id !== replacementFood.id)].slice(0, 30));
       setStatus(`Alternativa applicata: ${replacementFood.name}.`);
     } catch (error) {
@@ -860,8 +879,15 @@ export function App() {
     }
   };
 
+  const toggleFavoriteFood = (id: string) => {
+    const adding = !favoriteFoodIds.includes(id);
+    setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current]);
+    if (adding) setFoodPreferenceSignals((current) => updateFoodSignal(current, id, 'favorite'));
+  };
+
   const addFoodToManualMeal = (mealId: string, food: LocalFood) => {
     setCompletionPlan(null);
+    setFoodPreferenceSignals((current) => updateFoodSignal(current, food.id, 'use'));
     setRecentFoodIds((current) => [food.id, ...current.filter((id) => id !== food.id)].slice(0, 30));
     const quantityMode = defaultQuantityMode(food);
     const defaultQuantity = quantityMode.startsWith('unit:') ? 1 : Math.max(1, food.servingGrams || food.grammiMin || 100);
@@ -1185,8 +1211,8 @@ export function App() {
       <TimingSelectModal open={showTimingSelect} timings={timings} activeId={activeTimingId} onClose={() => setShowTimingSelect(false)} onSelect={chooseTiming} />
       <FoodLibrarySearchModal open={showFoodSearch} title="Cerca alimenti" eyebrow={onlineFoodLoading ? 'RICERCA OPEN FOOD FACTS...' : 'CORE + OPEN FOOD FACTS'} foods={foodSearchResults.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowFoodSearch(false)} onOpenFood={(food) => { setShowFoodSearch(false); openFoodDetail(food); }} />
       <FoodLibrarySearchModal open={showPoolSearch} title="Seleziona alimenti" eyebrow={onlineFoodLoading ? 'RICERCA OPEN FOOD FACTS...' : `PRESET ${activeFoodPreset.name.toUpperCase()}`} foods={poolFoodSearchResults.slice(0,160)} query={foodSearch} onQueryChange={setFoodSearch} onClose={() => setShowPoolSearch(false)} onOpenFood={(food) => { setShowPoolSearch(false); openFoodDetail(food); }} selectedIds={selectedFoodIds} onToggleSelected={togglePoolFood} />
-      <FoodPickerModal open={!!manualPickerMealId} foods={manualPickerFoods} query={manualPickerSearch} onQueryChange={setManualPickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setManualPickerMealId(null)} onSelect={(food) => { if (manualPickerMealId) addFoodToManualMeal(manualPickerMealId, food); }} />
-      <FoodPickerModal open={recipePickerOpen} foods={recipePickerFoods} query={recipePickerSearch} onQueryChange={setRecipePickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={(id) => setFavoriteFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current])} onClose={() => setRecipePickerOpen(false)} onSelect={addRecipeIngredient} />
+      <FoodPickerModal open={!!manualPickerMealId} foods={manualPickerFoods} query={manualPickerSearch} onQueryChange={setManualPickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={toggleFavoriteFood} onClose={() => setManualPickerMealId(null)} onSelect={(food) => { if (manualPickerMealId) addFoodToManualMeal(manualPickerMealId, food); }} />
+      <FoodPickerModal open={recipePickerOpen} foods={recipePickerFoods} query={recipePickerSearch} onQueryChange={setRecipePickerSearch} favoriteIds={favoriteFoodIds} recentIds={recentFoodIds} onToggleFavorite={toggleFavoriteFood} onClose={() => setRecipePickerOpen(false)} onSelect={addRecipeIngredient} />
       <WebBarcodeScannerModal
         open={showWebBarcodeScanner}
         onClose={() => setShowWebBarcodeScanner(false)}
