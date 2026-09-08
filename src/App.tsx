@@ -1195,6 +1195,7 @@ export function App() {
       {tab === 'diary' && <DiaryPanel
         date={activeDiaryDate}
         day={currentDiarySnapshot()}
+        diaryDays={{ ...diaryDays, [activeDiaryDate]: currentDiarySnapshot() }}
         trainingContext={activeTrainingContext}
         onChangeDay={(nextDay) => setDiaryDays((current) => ({ ...current, [activeDiaryDate]: nextDay }))}
         onPrevious={() => openDiaryDate(shiftDateKey(activeDiaryDate, -1))}

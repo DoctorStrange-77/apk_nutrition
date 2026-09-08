@@ -8,6 +8,8 @@ import {
   upsertDiaryMealFeedback,
 } from '@/domain/diary';
 import { dayMacroAdherence } from '@/domain/progressAnalytics';
+import { buildBristolDistribution, buildDiarySeries, buildDiarySummary, buildSmartDiaryInsights } from '@/domain/diaryAnalytics';
+import { BristolDistributionChart, DiaryBehaviorCharts, DiaryRecoveryChart, DiaryWeightChart } from '@/components/DiaryCharts';
 import { kcalFromMacros, macrosForManualDay } from '@/domain/manualMenu';
 import type {
   DailyRecoveryLog,
@@ -21,6 +23,7 @@ import type {
 type Props = {
   date: string;
   day: DiaryDay;
+  diaryDays: Record<string, DiaryDay>;
   trainingContext: TrainingContext | null;
   onChangeDay: (day: DiaryDay) => void;
   onPrevious: () => void;
@@ -98,6 +101,7 @@ const bristolLabel=(type:number)=>{
 export function DiaryPanel({
   date,
   day,
+  diaryDays,
   trainingContext,
   onChangeDay,
   onPrevious,
@@ -108,6 +112,11 @@ export function DiaryPanel({
   const recovery=day.recovery || {};
   const actual=useMemo(()=>macrosForManualDay(day.meals),[day.meals]);
   const adherence=dayMacroAdherence(day);
+  const [historyRange,setHistoryRange]=useState<7|14|30>(14);
+  const series=useMemo(()=>buildDiarySeries(diaryDays,date,historyRange),[diaryDays,date,historyRange]);
+  const summary=useMemo(()=>buildDiarySummary(diaryDays,date,historyRange),[diaryDays,date,historyRange]);
+  const bristol=useMemo(()=>buildBristolDistribution(diaryDays,date,historyRange),[diaryDays,date,historyRange]);
+  const insights=useMemo(()=>buildSmartDiaryInsights(diaryDays,date,historyRange),[diaryDays,date,historyRange]);
   const [bristolType,setBristolType]=useState<DiaryBowelMovement['bristolType']>(4);
   const [bowelTime,setBowelTime]=useState('08:00');
   const [precedingMealIds,setPrecedingMealIds]=useState<string[]>([]);
@@ -261,6 +270,49 @@ export function DiaryPanel({
     <section className="card">
       <div><p className="eyebrow red">NOTE</p><h2>Nota giornaliera</h2></div>
       <textarea className="diary-notes" rows={4} maxLength={500} placeholder="Contesto utile della giornata..." value={recovery.notes || ''} onChange={(event)=>changeRecovery({notes:event.target.value})}/>
+    </section>
+
+    <section className="card diary-history-card">
+      <div className="row-between">
+        <div><p className="eyebrow red">STORICO</p><h2>Trend Nutrition + Recovery</h2></div>
+        <div className="diary-range-switch">
+          {([7,14,30] as const).map((range)=><button
+            key={range}
+            type="button"
+            className={historyRange===range?'active':''}
+            onClick={()=>setHistoryRange(range)}
+          >{range} gg</button>)}
+        </div>
+      </div>
+      <div className="diary-history-kpis">
+        <div><small>GIORNI RECOVERY</small><strong>{summary.loggedRecoveryDays}</strong></div>
+        <div><small>SONNO MEDIO</small><strong>{summary.averageSleepHours==null?'—':`${summary.averageSleepHours.toFixed(1)} h`}</strong></div>
+        <div><small>STRESS MEDIO</small><strong>{summary.averageStress==null?'—':`${summary.averageStress.toFixed(1)}/10`}</strong></div>
+        <div><small>ENERGIA MEDIA</small><strong>{summary.averageEnergy==null?'—':`${summary.averageEnergy.toFixed(1)}/10`}</strong></div>
+        <div><small>FAME SERA</small><strong>{summary.averageEveningHunger==null?'—':`${summary.averageEveningHunger.toFixed(1)}/10`}</strong></div>
+        <div><small>ADERENZA</small><strong>{summary.averageAdherencePct==null?'—':`${summary.averageAdherencePct.toFixed(0)}%`}</strong></div>
+      </div>
+      <div className="diary-chart-stack">
+        <DiaryWeightChart series={series}/>
+        <DiaryRecoveryChart series={series}/>
+        <DiaryBehaviorCharts series={series}/>
+        <BristolDistributionChart items={bristol}/>
+      </div>
+    </section>
+
+    <section className="card diary-insights-card">
+      <div className="row-between">
+        <div><p className="eyebrow red">SMART INSIGHTS</p><h2>Segnali osservati</h2></div>
+        <span className="smart-engine-badge">LOCAL</span>
+      </div>
+      <p className="muted">Gli insight descrivono associazioni nei dati registrati; non indicano automaticamente una causa.</p>
+      {!insights.length && <p className="smart-empty">Servono più giornate compilate per individuare segnali affidabili.</p>}
+      <div className="diary-insight-list">
+        {insights.map((insight)=><article key={insight.id}>
+          <span><strong>{insight.title}</strong><small>{insight.sampleSize} osservazioni</small></span>
+          <p>{insight.detail}</p>
+        </article>)}
+      </div>
     </section>
   </div>;
 }
