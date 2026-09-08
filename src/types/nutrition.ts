@@ -3,6 +3,63 @@ export type MealWorkoutTiming = 'pre' | 'post' | 'none';
 export type MealTag = 'breakfast' | 'snack' | 'lunch' | 'dinner' | 'prenanna';
 export type FoodCategory = 'carb' | 'protein' | 'fat' | 'mixed';
 export type FoodPreferencePresetId = 'all' | 'bodybuilding' | 'high_protein' | 'mediterranean' | 'vegetarian' | 'vegan' | 'whole_foods' | 'quick_meals';
+export type EmergencyMode = 'none' | 'low_time' | 'outside_home' | 'skipped_meal';
+export type MealArchitectureId = 'breakfast_bowl' | 'yogurt_bowl' | 'rice_plate' | 'pasta_plate' | 'sandwich' | 'wrap' | 'shake' | 'snack' | 'savory_plate' | 'mixed';
+export type TrainingSessionType = 'upper' | 'lower' | 'full_body' | 'cardio' | 'rest' | 'other';
+
+export interface TrainingContext {
+  isTrainingDay: boolean;
+  startTime?: string;
+  durationMinutes?: number;
+  sessionType?: TrainingSessionType;
+  intensity?: 'low' | 'medium' | 'high';
+}
+
+export interface SmartNutritionSettings {
+  variety: number;
+  retailer: string;
+  pantryFirst: boolean;
+  zeroWaste: boolean;
+  emergencyMode: EmergencyMode;
+  explanationMode: boolean;
+  dataConfidence: boolean;
+  rawCookedAssist: boolean;
+  trainingAware: boolean;
+  packageAwareShopping: boolean;
+}
+
+export interface PantryItem {
+  foodId: string;
+  gramsAvailable: number;
+  packageGrams?: number;
+  packagePrice?: number;
+  retailer?: string;
+  updatedAt: string;
+}
+
+export interface FoodPreferenceSignal {
+  foodId: string;
+  score: number;
+  uses: number;
+  favorites: number;
+  replaceIn: number;
+  replaceOut: number;
+  likes: number;
+  dislikes: number;
+  updatedAt: string;
+}
+
+export interface PackageShoppingItem {
+  foodId: string;
+  name: string;
+  gramsNeeded: number;
+  gramsFromPantry: number;
+  gramsToBuy: number;
+  packageGrams?: number;
+  packagesToBuy?: number;
+  estimatedCost?: number;
+  retailer?: string;
+}
 
 export interface CustomFoodPreferencePreset {
   id: string;
@@ -257,4 +314,8 @@ export interface NutritionAppSnapshot {
   recentFoodIds?: string[];
   savedMealTemplates?: SavedMealTemplate[];
   recipes?: Recipe[];
+  smartSettings?: SmartNutritionSettings;
+  pantryItems?: PantryItem[];
+  foodPreferenceSignals?: FoodPreferenceSignal[];
+  dailyTrainingContexts?: Record<string, TrainingContext>;
 }

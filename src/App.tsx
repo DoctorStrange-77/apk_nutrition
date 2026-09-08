@@ -34,6 +34,7 @@ import { appendSavedMeal, createEmptyRecipe, createSavedMealTemplate, recipeToLo
 import { generatedMenuToManualMeals } from '@/domain/weeklyPlanner';
 import { createCustomFoodPreference, resolveCustomFoodPreferenceFoods, validateCustomFoodPreference } from '@/domain/customFoodPreferences';
 import { defaultQuantityMode, gramsFromQuantity, manualItemQuantity, modeLabel, quantityOptions, setManualItemQuantity, switchManualItemMode } from '@/domain/smartPortions';
+import { defaultSmartNutritionSettings, normalizeSmartNutritionSettings } from '@/domain/intelligence/intelligenceState';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode, shouldUseWebBarcodeScanner } from '@/services/barcodeService';
 import { lookupOpenFoodFacts, searchOpenFoodFacts } from '@/services/openFoodFactsService';
@@ -42,17 +43,21 @@ import type {
   CustomFoodPreferencePreset,
   DiaryDay,
   FoodCategory,
+  FoodPreferenceSignal,
   FoodPreferencePresetId,
   GeneratedMenu,
   LocalFood,
   MacroTarget,
   ManualMeal,
   NutritionAppSnapshot,
+  PantryItem,
   Recipe,
   SavedManualMenu,
   SavedMealTemplate,
+  SmartNutritionSettings,
   TimingMeal,
   TimingTemplate,
+  TrainingContext,
   WeeklyPlanResult,
 } from '@/types/nutrition';
 
@@ -126,6 +131,10 @@ export function App() {
   const [recentFoodIds, setRecentFoodIds] = useState<string[]>([]);
   const [savedMealTemplates, setSavedMealTemplates] = useState<SavedMealTemplate[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [smartSettings, setSmartSettings] = useState<SmartNutritionSettings>(defaultSmartNutritionSettings);
+  const [pantryItems, setPantryItems] = useState<PantryItem[]>([]);
+  const [foodPreferenceSignals, setFoodPreferenceSignals] = useState<FoodPreferenceSignal[]>([]);
+  const [dailyTrainingContexts, setDailyTrainingContexts] = useState<Record<string, TrainingContext>>({});
   const [activeTimingId, setActiveTimingId] = useState(DEFAULT_BUILT_IN_TIMING_ID);
   const [menu, setMenu] = useState<GeneratedMenu | null>(null);
   const [completionPlan, setCompletionPlan] = useState<GeneratedMenu | null>(null);
@@ -297,6 +306,10 @@ export function App() {
 
         setSavedMealTemplates(snapshot.savedMealTemplates || []);
         setRecipes(snapshot.recipes || []);
+        setSmartSettings(normalizeSmartNutritionSettings(snapshot.smartSettings));
+        setPantryItems(snapshot.pantryItems || []);
+        setFoodPreferenceSignals(snapshot.foodPreferenceSignals || []);
+        setDailyTrainingContexts(snapshot.dailyTrainingContexts || {});
         const today = localDateKey();
         const knownTimingIds = new Set([...BUILT_IN_TIMINGS.map((item) => item.id), ...(snapshot.customTimings || []).map((item) => item.id)]);
         const migrateTimingId = (id?: string) => { const migrated = migrateBuiltInTimingId(id); return knownTimingIds.has(migrated) ? migrated : DEFAULT_BUILT_IN_TIMING_ID; };
@@ -351,9 +364,10 @@ export function App() {
       manualMeals, lastTarget: target, lastTimingId: activeTimingId, lastMenuMode: menuMode, selectedFoodIds, foodPreferencePresetId,
       customFoodPreferences, activeCustomFoodPreferenceId,
       diaryDays: persistedDays, activeDiaryDate, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes,
+      smartSettings, pantryItems, foodPreferenceSignals, dailyTrainingContexts,
     };
     void setLocalValue('snapshot', snapshot).catch((error) => setStatus(`Salvataggio locale: ${String(error)}`));
-  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds, foodPreferencePresetId, customFoodPreferences, activeCustomFoodPreferenceId, diaryDays, activeDiaryDate, menu, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes]);
+  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds, foodPreferencePresetId, customFoodPreferences, activeCustomFoodPreferenceId, diaryDays, activeDiaryDate, menu, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes, smartSettings, pantryItems, foodPreferenceSignals, dailyTrainingContexts]);
 
   const currentDiarySnapshot = () =>
     buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu);

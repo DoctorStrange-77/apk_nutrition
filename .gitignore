@@ -3,3 +3,4 @@ dist/
 .tmp_install/
 *.tsbuildinfo
 .worktrees/
+.superpowers/
