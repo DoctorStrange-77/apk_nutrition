@@ -7,7 +7,7 @@ export interface FoodPreferencePreset {
 }
 
 export const FOOD_PREFERENCE_PRESETS: FoodPreferencePreset[] = [
-  { id:'all', name:'Core completo', description:'Usa tutta la libreria alimentare curata di App Nutrition.' },
+  { id:'all', name:'Core completo', description:'Usa tutta la libreria alimentare curata di Smart Nutrition.' },
   { id:'bodybuilding', name:'Bodybuilding essenziale', description:'Pool ristretto di alimenti semplici, ripetibili e pratici per una dieta da bodybuilding.' },
   { id:'high_protein', name:'High Protein', description:'Priorità a fonti proteiche dense con carboidrati e grassi semplici per completare i pasti.' },
   { id:'mediterranean', name:'Mediterraneo', description:'Cereali, tuberi, legumi, frutta, pesce, carni magre, latticini, olio EVO e frutta secca.' },

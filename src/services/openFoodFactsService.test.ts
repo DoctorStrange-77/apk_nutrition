@@ -5,7 +5,7 @@ import {
 } from '@/services/openFoodFactsService';
 
 describe('Open Food Facts service', () => {
-  it('normalizes an OFF product into an App Nutrition food', () => {
+  it('normalizes an OFF product into a Smart Nutrition food', () => {
     const food = normalizeOpenFoodFactsProduct({
       code: '1234567890123',
       product_name_it: 'Yogurt greco',

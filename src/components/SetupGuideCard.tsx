@@ -19,7 +19,7 @@ export function SetupGuideCard(props: Props) {
 
   return <section className="setup-guide-card">
     <div className="setup-guide-head">
-      <div><p className="eyebrow red">PRIMO UTILIZZO</p><h2>Configura App Nutrition in 3 passaggi</h2></div>
+      <div><p className="eyebrow red">PRIMO UTILIZZO</p><h2>Configura Smart Nutrition in 3 passaggi</h2></div>
       <span className="setup-progress-badge">{Number(targetReady) + Number(timingReady) + Number(generated)}/3</span>
     </div>
     <p className="setup-guide-intro">Per creare automaticamente il menu, imposta prima i macronutrienti giornalieri e il timing dei pasti.</p>
@@ -37,7 +37,7 @@ export function SetupGuideCard(props: Props) {
 
     <div className={`setup-step ${generated ? 'done' : readyToGenerate ? 'current' : 'locked'}`}>
       <StepState done={generated} />
-      <div className="setup-step-copy"><strong>3. Genera il primo menu</strong><span>{generated ? 'Configurazione completata.' : 'App Nutrition userà i macronutrienti impostati e il timing scelto per creare automaticamente la giornata.'}</span></div>
+      <div className="setup-step-copy"><strong>3. Genera il primo menu</strong><span>{generated ? 'Configurazione completata.' : 'Smart Nutrition userà i macronutrienti impostati e il timing scelto per creare automaticamente la giornata.'}</span></div>
       {!generated && <button className="primary small" disabled={!readyToGenerate} onClick={onGenerate}>Crea il mio menu</button>}
     </div>
   </section>;

@@ -4,6 +4,15 @@ export type MealTag = 'breakfast' | 'snack' | 'lunch' | 'dinner' | 'prenanna';
 export type FoodCategory = 'carb' | 'protein' | 'fat' | 'mixed';
 export type FoodPreferencePresetId = 'all' | 'bodybuilding' | 'high_protein' | 'mediterranean' | 'vegetarian' | 'vegan' | 'whole_foods' | 'quick_meals';
 
+export interface CustomFoodPreferencePreset {
+  id: string;
+  name: string;
+  description?: string;
+  foodIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MacroTarget {
   carbs: number;
   protein: number;
@@ -65,7 +74,7 @@ export interface LocalFood {
   mainSourceThreshold?: number;
   suitable: MealTag[];
   source: 'core' | 'builder' | 'manual' | 'barcode' | 'external' | 'recipe';
-  dataSource?: 'App Nutrition Core' | 'Open Food Facts' | 'User' | 'Recipe';
+  dataSource?: 'Smart Nutrition Core' | 'Open Food Facts' | 'User' | 'Recipe';
   sourceReference?: string;
   verifiedAt?: string;
   servingName?: string;
@@ -240,6 +249,8 @@ export interface NutritionAppSnapshot {
   lastMenuMode?: 'automatic' | 'manual';
   selectedFoodIds?: string[];
   foodPreferencePresetId?: FoodPreferencePresetId;
+  customFoodPreferences?: CustomFoodPreferencePreset[];
+  activeCustomFoodPreferenceId?: string | null;
   diaryDays?: Record<string, DiaryDay>;
   activeDiaryDate?: string;
   favoriteFoodIds?: string[];

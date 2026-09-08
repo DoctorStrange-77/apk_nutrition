@@ -1,6 +1,6 @@
 {
-  "name": "App Nutrition",
-  "short_name": "App Nutrition",
+  "name": "Smart Nutrition",
+  "short_name": "Smart Nutrition",
   "description": "Macro, timing, diario e generazione automatica del menu.",
   "lang": "it",
   "start_url": "/",
@@ -11,7 +11,7 @@
   "theme_color": "#111827",
   "icons": [
     {
-      "src": "/builder-nutrition-icon.svg",
+      "src": "/smart-nutrition-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

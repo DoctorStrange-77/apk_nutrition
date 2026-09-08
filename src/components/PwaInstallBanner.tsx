@@ -50,10 +50,10 @@ export function PwaInstallBanner() {
   return <section className="pwa-install-banner">
     <div>
       <p className="eyebrow red">VERSIONE WEB</p>
-      <strong>Usa App Nutrition come un app</strong>
+      <strong>Usa Smart Nutrition come un'app</strong>
       <span>{ios
         ? 'Su iPhone: apri Condividi e scegli Aggiungi alla schermata Home.'
-        : 'Installa App Nutrition sulla schermata Home per aprirla a tutto schermo.'}</span>
+        : 'Installa Smart Nutrition sulla schermata Home per aprirla a tutto schermo.'}</span>
     </div>
     <div className="pwa-install-actions">
       {!ios && promptEvent && <button className="primary small" onClick={() => void install()}>Installa</button>}

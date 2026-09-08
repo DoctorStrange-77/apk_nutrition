@@ -49,7 +49,7 @@ jobs:
       - name: Upload web build
         uses: actions/upload-artifact@v4
         with:
-          name: app-nutrition-web-pwa
+          name: smart-nutrition-web-pwa
           path: dist
           if-no-files-found: error
 
@@ -82,6 +82,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-nutrition-debug-apk
+          name: smart-nutrition-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

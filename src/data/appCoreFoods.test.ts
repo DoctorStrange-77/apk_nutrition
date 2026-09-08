@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { APP_CORE_FOODS, CORE_LIBRARY_VERSION } from '@/data/appCoreFoods';
 
-describe('App Nutrition core food library', () => {
+describe('Smart Nutrition core food library', () => {
   it('contains a compact but sufficiently broad sports-food pool', () => {
     expect(APP_CORE_FOODS.length).toBeGreaterThanOrEqual(250);
     expect(APP_CORE_FOODS.length).toBeLessThanOrEqual(320);
@@ -25,7 +25,7 @@ describe('App Nutrition core food library', () => {
       expect(ids.has(food.id)).toBe(false);
       ids.add(food.id);
       expect(food.source).toBe('core');
-      expect(['App Nutrition Core', 'Open Food Facts']).toContain(food.dataSource);
+      expect(['Smart Nutrition Core', 'Open Food Facts']).toContain(food.dataSource);
       if (food.dataSource === 'Open Food Facts') {
         expect(food.barcode).toBeTruthy();
         expect(food.brand).toBeTruthy();

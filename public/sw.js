@@ -1,5 +1,5 @@
-const CACHE_NAME = 'app-nutrition-v117';
-const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/builder-nutrition-icon.svg'];
+const CACHE_NAME = 'smart-nutrition-v118';
+const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/smart-nutrition-icon.svg'];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -9,7 +9,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => (key.startsWith('app-nutrition-') || key.startsWith('builder-nutrition-')) && key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => (key.startsWith('smart-nutrition-') || key.startsWith('app-nutrition-') || key.startsWith('builder-nutrition-')) && key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });

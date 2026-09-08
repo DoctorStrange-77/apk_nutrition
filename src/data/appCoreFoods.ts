@@ -5,7 +5,7 @@ type CoreFoodSeed = Omit<LocalFood, 'source' | 'dataSource' | 'sourceReference' 
 type BrandedCoreFoodSeed = Omit<LocalFood, 'source'>;
 
 export const CORE_LIBRARY_VERSION = 'core-2026.09';
-const CORE_SOURCE_REFERENCE = 'Riferimenti per la curatela: CREA Tabelle di Composizione degli Alimenti e USDA FoodData Central. Valori App Nutrition, non riproduzione ufficiale dei dataset.';
+const CORE_SOURCE_REFERENCE = 'Riferimenti per la curatela: CREA Tabelle di Composizione degli Alimenti e USDA FoodData Central. Valori Smart Nutrition, non riproduzione ufficiale dei dataset.';
 
 const RAW_CORE_FOODS: CoreFoodSeed[] = [
   { id:'riso', name:'Riso bianco (crudo)', category:'carb', subcategory:'Amidi', carbs:80, protein:7, fat:0.7, suitable:['lunch','dinner'], grammiMin:50, grammiMax:150 },
@@ -132,7 +132,7 @@ const BRANDED_PROTEIN_FOODS: BrandedCoreFoodSeed[] = [
 ];
 
 export const APP_CORE_FOODS: LocalFood[] = [
-  ...RAW_CORE_FOODS.map((food) => ({ ...food, source:'core' as const, dataSource:'App Nutrition Core' as const, sourceReference:CORE_SOURCE_REFERENCE })),
-  ...EXPANDED_CORE_FOODS.map((food) => ({ ...food, source:'core' as const, dataSource:'App Nutrition Core' as const, sourceReference:CORE_SOURCE_REFERENCE })),
+  ...RAW_CORE_FOODS.map((food) => ({ ...food, source:'core' as const, dataSource:'Smart Nutrition Core' as const, sourceReference:CORE_SOURCE_REFERENCE })),
+  ...EXPANDED_CORE_FOODS.map((food) => ({ ...food, source:'core' as const, dataSource:'Smart Nutrition Core' as const, sourceReference:CORE_SOURCE_REFERENCE })),
   ...BRANDED_PROTEIN_FOODS.map((food) => ({ ...food, source:'core' as const })),
 ];

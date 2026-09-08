@@ -21,6 +21,7 @@ import { TimingSelectModal } from '@/components/TimingSelectModal';
 import { NewFoodModal } from '@/components/NewFoodModal';
 import { TimingEditorModal } from '@/components/TimingEditorModal';
 import { WebBarcodeScannerModal } from '@/components/WebBarcodeScannerModal';
+import { CustomFoodPreferenceModal } from '@/components/CustomFoodPreferenceModal';
 import { APP_CORE_FOODS } from '@/data/appCoreFoods';
 import { FOOD_PREFERENCE_PRESETS, filterFoodsByPreferencePreset, resolveFoodPreferencePresetId } from '@/data/foodPreferencePresets';
 import { BUILT_IN_TIMINGS, DEFAULT_BUILT_IN_TIMING_ID, migrateBuiltInTimingId } from '@/data/builtInTimings';
@@ -31,12 +32,14 @@ import { buildLockedRegenerationContext, mergeUnlockedRegeneration, replaceFoodS
 import { buildCurrentDiaryDay, copyDiaryDay, copyMealIntoDay, emptyMealsForTiming, localDateKey, makeDiaryDay, shiftDateKey } from '@/domain/diary';
 import { appendSavedMeal, createEmptyRecipe, createSavedMealTemplate, recipeToLocalFood, validateRecipe } from '@/domain/recipes';
 import { generatedMenuToManualMeals } from '@/domain/weeklyPlanner';
+import { createCustomFoodPreference, resolveCustomFoodPreferenceFoods, validateCustomFoodPreference } from '@/domain/customFoodPreferences';
 import { defaultQuantityMode, gramsFromQuantity, manualItemQuantity, modeLabel, quantityOptions, setManualItemQuantity, switchManualItemMode } from '@/domain/smartPortions';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode, shouldUseWebBarcodeScanner } from '@/services/barcodeService';
 import { lookupOpenFoodFacts, searchOpenFoodFacts } from '@/services/openFoodFactsService';
 import { getLocalValue, initLocalDatabase, setLocalValue } from '@/storage/localDatabase';
 import type {
+  CustomFoodPreferencePreset,
   DiaryDay,
   FoodCategory,
   FoodPreferencePresetId,
@@ -116,6 +119,9 @@ export function App() {
   const [activeDiaryDate, setActiveDiaryDate] = useState(localDateKey());
   const [selectedFoodIds, setSelectedFoodIds] = useState<string[]>([]);
   const [foodPreferencePresetId, setFoodPreferencePresetId] = useState<FoodPreferencePresetId>('all');
+  const [customFoodPreferences, setCustomFoodPreferences] = useState<CustomFoodPreferencePreset[]>([]);
+  const [activeCustomFoodPreferenceId, setActiveCustomFoodPreferenceId] = useState<string | null>(null);
+  const [editingCustomFoodPreference, setEditingCustomFoodPreference] = useState<CustomFoodPreferencePreset | null>(null);
   const [favoriteFoodIds, setFavoriteFoodIds] = useState<string[]>([]);
   const [recentFoodIds, setRecentFoodIds] = useState<string[]>([]);
   const [savedMealTemplates, setSavedMealTemplates] = useState<SavedMealTemplate[]>([]);
@@ -145,6 +151,7 @@ export function App() {
   const [showFoodSearch, setShowFoodSearch] = useState(false);
   const [showPoolSearch, setShowPoolSearch] = useState(false);
   const [showFoodPresetSelect, setShowFoodPresetSelect] = useState(false);
+  const [showCustomPreferenceFoodPicker, setShowCustomPreferenceFoodPicker] = useState(false);
   const [showTimingSelect, setShowTimingSelect] = useState(false);
   const [showWebBarcodeScanner, setShowWebBarcodeScanner] = useState(false);
   const [dateModalMode, setDateModalMode] = useState<DateModalMode | null>(null);
@@ -161,16 +168,29 @@ export function App() {
     const recipeFoods = recipes.map(recipeToLocalFood).filter((food) => !deletedFoodIds.includes(food.id));
     return [...coreFoods, ...custom, ...recipeFoods];
   }, [coreFoods, customFoods, deletedFoodIds, recipes]);
-  const activeFoodPreset = FOOD_PREFERENCE_PRESETS.find((preset) => preset.id === foodPreferencePresetId) || FOOD_PREFERENCE_PRESETS[0];
-  const presetCoreFoods = useMemo(
-    () => filterFoodsByPreferencePreset(coreFoods, foodPreferencePresetId),
-    [coreFoods, foodPreferencePresetId],
+  const activeCustomFoodPreference = useMemo(
+    () => customFoodPreferences.find((preset) => preset.id === activeCustomFoodPreferenceId) || null,
+    [customFoodPreferences, activeCustomFoodPreferenceId],
+  );
+  const builtInFoodPreset = FOOD_PREFERENCE_PRESETS.find((preset) => preset.id === foodPreferencePresetId) || FOOD_PREFERENCE_PRESETS[0];
+  const activeFoodPreset = activeCustomFoodPreference
+    ? {
+        id: `custom:${activeCustomFoodPreference.id}`,
+        name: activeCustomFoodPreference.name,
+        description: activeCustomFoodPreference.description || 'Preferenza alimentare personalizzata.',
+      }
+    : builtInFoodPreset;
+  const preferenceFoods = useMemo(
+    () => activeCustomFoodPreference
+      ? resolveCustomFoodPreferenceFoods(activeCustomFoodPreference, foods)
+      : filterFoodsByPreferencePreset(coreFoods, foodPreferencePresetId),
+    [activeCustomFoodPreference, foods, coreFoods, foodPreferencePresetId],
   );
   const generatorFoods = useMemo(
     () => selectedFoodIds.length
-      ? filterFoodsByPreferencePreset(foods.filter((food) => selectedFoodIds.includes(food.id)), foodPreferencePresetId)
-      : presetCoreFoods,
-    [foods, presetCoreFoods, selectedFoodIds, foodPreferencePresetId],
+      ? preferenceFoods.filter((food) => selectedFoodIds.includes(food.id))
+      : preferenceFoods,
+    [preferenceFoods, selectedFoodIds],
   );
   const activeTiming = timings.find((timing) => timing.id === activeTimingId) || timings[0];
   const kcal = kcalFromMacros(target);
@@ -193,9 +213,13 @@ export function App() {
     const merged = [...filteredFoods, ...onlineFoodResults];
     return [...new Map(merged.map((food) => [food.id, food])).values()];
   }, [filteredFoods, onlineFoodResults, foodSearch]);
+  const preferenceFoodIdSet = useMemo(
+    () => new Set(preferenceFoods.map((food) => food.id)),
+    [preferenceFoods],
+  );
   const poolFoodSearchResults = useMemo(
-    () => filterFoodsByPreferencePreset(foodSearchResults, foodPreferencePresetId),
-    [foodSearchResults, foodPreferencePresetId],
+    () => foodSearchResults.filter((food) => preferenceFoodIdSet.has(food.id)),
+    [foodSearchResults, preferenceFoodIdSet],
   );
   const recipePickerFoods = useMemo(() => {
     const query = recipePickerSearch.trim().toLowerCase();
@@ -223,7 +247,7 @@ export function App() {
   }, [foods, manualPickerSearch, favoriteFoodIds, recentFoodIds]);
 
   useEffect(() => {
-    if (!showFoodSearch && !showPoolSearch) {
+    if (!showFoodSearch && !showPoolSearch && !showCustomPreferenceFoodPicker) {
       setOnlineFoodResults([]);
       setOnlineFoodLoading(false);
       return;
@@ -255,7 +279,7 @@ export function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [foodSearch, showFoodSearch, showPoolSearch]);
+  }, [foodSearch, showFoodSearch, showPoolSearch, showCustomPreferenceFoodPicker]);
 
   useEffect(() => {
     void (async () => {
@@ -265,6 +289,9 @@ export function App() {
         const storedSetup = await getLocalValue<SetupProgress | null>(SETUP_KEY, null);
         setCustomTimings(snapshot.customTimings || []);
         setCustomFoods(snapshot.customFoods || []);
+        const loadedCustomPreferences = snapshot.customFoodPreferences || [];
+        setCustomFoodPreferences(loadedCustomPreferences);
+        setActiveCustomFoodPreferenceId(loadedCustomPreferences.some((preset) => preset.id === snapshot.activeCustomFoodPreferenceId) ? snapshot.activeCustomFoodPreferenceId || null : null);
         setFoodOverrides(snapshot.foodOverrides || {});
         setDeletedFoodIds(snapshot.deletedFoodIds || []);
 
@@ -308,7 +335,7 @@ export function App() {
     setManualMeals((current) => syncMealsToTiming(activeTiming, current));
   }, [ready, activeTimingId, activeTiming?.id]);
 
-  useEffect(() => { setCompletionPlan(null); }, [target, activeTimingId, selectedFoodIds, foodPreferencePresetId]);
+  useEffect(() => { setCompletionPlan(null); }, [target, activeTimingId, selectedFoodIds, foodPreferencePresetId, activeCustomFoodPreferenceId, customFoodPreferences]);
 
   useEffect(() => {
     if (!ready) return;
@@ -322,10 +349,11 @@ export function App() {
     const snapshot: NutritionAppSnapshot = {
       customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus,
       manualMeals, lastTarget: target, lastTimingId: activeTimingId, lastMenuMode: menuMode, selectedFoodIds, foodPreferencePresetId,
+      customFoodPreferences, activeCustomFoodPreferenceId,
       diaryDays: persistedDays, activeDiaryDate, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes,
     };
     void setLocalValue('snapshot', snapshot).catch((error) => setStatus(`Salvataggio locale: ${String(error)}`));
-  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds, foodPreferencePresetId, diaryDays, activeDiaryDate, menu, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes]);
+  }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds, foodPreferencePresetId, customFoodPreferences, activeCustomFoodPreferenceId, diaryDays, activeDiaryDate, menu, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes]);
 
   const currentDiarySnapshot = () =>
     buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu);
@@ -680,6 +708,7 @@ export function App() {
       setCustomFoods((current) => current.filter((food) => food.id !== id));
     }
     setSelectedFoodIds((current) => current.filter((foodId) => foodId !== id));
+    setCustomFoodPreferences((current) => current.map((preset) => ({ ...preset, foodIds: preset.foodIds.filter((foodId) => foodId !== id), updatedAt: new Date().toISOString() })));
     setEditingFood(null);
     setStatus('Alimento eliminato dal database locale.');
   };
@@ -696,6 +725,69 @@ export function App() {
     const food = foodSearchResults.find((item) => item.id === id) || foods.find((item) => item.id === id);
     if (food?.source === 'external') setCustomFoods((current) => [food, ...current.filter((item) => item.id !== food.id)]);
     setSelectedFoodIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  };
+
+  const beginCreateCustomFoodPreference = () => {
+    setEditingCustomFoodPreference(createCustomFoodPreference());
+    setFoodSearch('');
+    setShowFoodPresetSelect(false);
+  };
+
+  const beginEditActiveCustomFoodPreference = () => {
+    if (!activeCustomFoodPreference) return;
+    setEditingCustomFoodPreference(structuredClone(activeCustomFoodPreference));
+    setFoodSearch('');
+  };
+
+  const toggleCustomPreferenceFood = (id: string) => {
+    const food = foodSearchResults.find((item) => item.id === id) || foods.find((item) => item.id === id);
+    if (food?.source === 'external') {
+      setCustomFoods((current) => [food, ...current.filter((item) => item.id !== food.id)]);
+    }
+    setEditingCustomFoodPreference((current) => current ? {
+      ...current,
+      foodIds: current.foodIds.includes(id)
+        ? current.foodIds.filter((foodId) => foodId !== id)
+        : [...current.foodIds, id],
+      updatedAt: new Date().toISOString(),
+    } : current);
+  };
+
+  const saveCustomFoodPreference = () => {
+    if (!editingCustomFoodPreference) return;
+    const normalized: CustomFoodPreferencePreset = {
+      ...editingCustomFoodPreference,
+      name: editingCustomFoodPreference.name.trim(),
+      description: editingCustomFoodPreference.description?.trim() || '',
+      foodIds: [...new Set(editingCustomFoodPreference.foodIds)],
+      updatedAt: new Date().toISOString(),
+    };
+    const errors = validateCustomFoodPreference(normalized, foods);
+    if (errors.length) {
+      setStatus(`Preferenza non salvata: ${errors[0]}`);
+      return;
+    }
+
+    setCustomFoodPreferences((current) => [normalized, ...current.filter((preset) => preset.id !== normalized.id)]);
+    setActiveCustomFoodPreferenceId(normalized.id);
+    setSelectedFoodIds([]);
+    setMenu(null);
+    setEditingCustomFoodPreference(null);
+    setShowCustomPreferenceFoodPicker(false);
+    setStatus(`Preferenza personalizzata attiva: ${normalized.name} · ${normalized.foodIds.length} alimenti.`);
+  };
+
+  const deleteCustomFoodPreference = (id: string) => {
+    setCustomFoodPreferences((current) => current.filter((preset) => preset.id !== id));
+    if (activeCustomFoodPreferenceId === id) {
+      setActiveCustomFoodPreferenceId(null);
+      setFoodPreferencePresetId('all');
+      setSelectedFoodIds([]);
+      setMenu(null);
+    }
+    setEditingCustomFoodPreference(null);
+    setShowCustomPreferenceFoodPicker(false);
+    setStatus('Preferenza personalizzata eliminata.');
   };
 
   const resolveBarcode = async (barcode: string) => {
@@ -842,7 +934,13 @@ export function App() {
     if (!editingRecipe) return;
     const id = editingRecipe.id;
     setRecipes((current) => current.filter((recipe) => recipe.id !== id));
-    setSelectedFoodIds((current) => current.filter((foodId) => foodId !== `recipe-food:${id}`));
+    const recipeFoodId = `recipe-food:${id}`;
+    setSelectedFoodIds((current) => current.filter((foodId) => foodId !== recipeFoodId));
+    setCustomFoodPreferences((current) => current.map((preset) => ({
+      ...preset,
+      foodIds: preset.foodIds.filter((foodId) => foodId !== recipeFoodId),
+      updatedAt: new Date().toISOString(),
+    })));
     setEditingRecipe(null);
     setStatus('Ricetta eliminata.');
   };
@@ -860,7 +958,7 @@ export function App() {
     <main className="app-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">APP NUTRITION</p>
+          <p className="eyebrow">SMART NUTRITION</p>
           <h1>{tab === 'menu' ? 'Oggi' : tab === 'week' ? 'Settimana' : tab === 'progress' ? 'Progressi' : tab === 'profile' ? 'Profilo' : tab === 'timing' ? 'Timing' : tab === 'foods' ? 'Alimenti' : 'Salvati'}</h1>
           <p className="muted">Imposta i macronutrienti, scegli il timing e crea automaticamente il tuo menu giornaliero.</p>
         </div>
@@ -898,7 +996,7 @@ export function App() {
         {menuMode === 'automatic' && <>
           <section className="card" id="starting-target-card">
             <div className="row-between"><div><p className="eyebrow red">PASSO 1</p><h2>Macro di partenza</h2></div><span className={`setup-inline-status ${setupProgress.target ? 'done' : ''}`}>{setupProgress.target ? 'Confermati' : 'Da confermare'}</span></div>
-            <p className="muted">Inserisci il target giornaliero che App Nutrition deve rispettare. In alternativa puoi calcolarlo dalla sezione Profilo.</p>
+            <p className="muted">Inserisci il target giornaliero che Smart Nutrition deve rispettare. In alternativa puoi calcolarlo dalla sezione Profilo.</p>
             <div className="macro-grid">
               <label>Carboidrati<input type="number" min="0" value={target.carbs} onChange={(e) => changeStartingMacro('carbs', e.target.value)} /><span>g</span></label>
               <label>Proteine<input type="number" min="0" value={target.protein} onChange={(e) => changeStartingMacro('protein', e.target.value)} /><span>g</span></label>
@@ -918,17 +1016,24 @@ export function App() {
           </section>
 
           <section className="card">
-            <div className="row-between"><h2>Preferenze alimentari</h2><button className="ghost" onClick={() => setShowFoodPresetSelect(true)}>Scegli</button></div>
+            <div className="row-between">
+              <h2>Preferenze alimentari</h2>
+              <div className="button-group">
+                {activeCustomFoodPreference && <button className="secondary small" onClick={beginEditActiveCustomFoodPreference}>Modifica</button>}
+                <button className="ghost" onClick={() => setShowFoodPresetSelect(true)}>Scegli</button>
+              </div>
+            </div>
             <div className="food-preset-active">
-              <span><small>Preset attivo</small><strong>{activeFoodPreset.name}</strong></span>
-              <b>{presetCoreFoods.length} alimenti</b>
+              <span><small>{activeCustomFoodPreference ? 'Preferenza personale' : 'Preset attivo'}</small><strong>{activeFoodPreset.name}</strong></span>
+              <b>{preferenceFoods.length} alimenti</b>
             </div>
             <p className="muted">{activeFoodPreset.description}</p>
+            {!activeCustomFoodPreference && <button className="text-button" onClick={beginCreateCustomFoodPreference}>+ Crea preferenza personalizzata</button>}
           </section>
 
           <section className="card">
             <div className="row-between"><h2>Pool alimenti</h2><button className="ghost" onClick={() => { setFoodSearch(''); setShowPoolSearch(true); }}>Personalizza</button></div>
-            <p className="muted">{selectedFoodIds.length ? `${generatorFoods.length} alimenti compatibili selezionati manualmente nel preset ${activeFoodPreset.name}.` : `Il generatore userà automaticamente i ${presetCoreFoods.length} alimenti del preset ${activeFoodPreset.name}.`}</p>
+            <p className="muted">{selectedFoodIds.length ? `${generatorFoods.length} alimenti selezionati per questo menu nel profilo ${activeFoodPreset.name}.` : `Il generatore userà automaticamente i ${preferenceFoods.length} alimenti della preferenza ${activeFoodPreset.name}.`}</p>
             {selectedFoodIds.length > 0 && <button className="text-button" onClick={() => setSelectedFoodIds([])}>Rimuovi personalizzazione del pool</button>}
           </section>
           <div className="actions"><button className="primary" onClick={() => generate(false)}>Genera menu</button><button className="secondary" onClick={() => generate(true)} disabled={!menu}>{menu?.lockedMealIndexes?.length ? 'Rigenera non bloccati' : 'Rigenera'}</button></div>
@@ -1074,22 +1179,71 @@ export function App() {
         onDetected={(barcode) => { setShowWebBarcodeScanner(false); void resolveBarcode(barcode); }}
       />
       <NewFoodModal open={showNewFood} value={manualFood} onChange={setManualFood} onClose={() => setShowNewFood(false)} onSave={addManualFood} />
+      <CustomFoodPreferenceModal
+        preset={editingCustomFoodPreference}
+        foods={foods}
+        isExisting={!!editingCustomFoodPreference && customFoodPreferences.some((preset) => preset.id === editingCustomFoodPreference.id)}
+        onChange={setEditingCustomFoodPreference}
+        onClose={() => { setEditingCustomFoodPreference(null); setShowCustomPreferenceFoodPicker(false); }}
+        onChooseFoods={() => { setFoodSearch(''); setShowCustomPreferenceFoodPicker(true); }}
+        onRemoveFood={(foodId) => setEditingCustomFoodPreference((current) => current ? { ...current, foodIds: current.foodIds.filter((id) => id !== foodId), updatedAt: new Date().toISOString() } : current)}
+        onSave={saveCustomFoodPreference}
+        onDelete={editingCustomFoodPreference ? () => deleteCustomFoodPreference(editingCustomFoodPreference.id) : undefined}
+      />
+      <FoodLibrarySearchModal
+        open={showCustomPreferenceFoodPicker}
+        title="Alimenti della preferenza"
+        eyebrow={onlineFoodLoading ? 'RICERCA OPEN FOOD FACTS...' : 'LIBRERIA COMPLETA'}
+        foods={foodSearchResults.slice(0, 220)}
+        query={foodSearch}
+        onQueryChange={setFoodSearch}
+        onClose={() => setShowCustomPreferenceFoodPicker(false)}
+        onOpenFood={openFoodDetail}
+        selectedIds={editingCustomFoodPreference?.foodIds || []}
+        onToggleSelected={toggleCustomPreferenceFood}
+      />
       <ChoicePopup
         open={showFoodPresetSelect}
         title="Preferenze alimentari"
-        choices={FOOD_PREFERENCE_PRESETS.map((preset) => ({
-          value: preset.id,
-          label: preset.name,
-          subtitle: preset.description,
-        }))}
-        value={foodPreferencePresetId}
+        choices={[
+          ...FOOD_PREFERENCE_PRESETS.map((preset) => ({
+            value: preset.id,
+            label: preset.name,
+            subtitle: preset.description,
+          })),
+          ...customFoodPreferences.map((preset) => ({
+            value: `custom:${preset.id}`,
+            label: preset.name,
+            subtitle: `Personalizzata · ${preset.foodIds.length} alimenti`,
+          })),
+          {
+            value: '__create_custom__',
+            label: '+ Crea preferenza personalizzata',
+            subtitle: 'Scegli e salva gli alimenti che vuoi usare nel generatore.',
+          },
+        ]}
+        value={activeCustomFoodPreference ? `custom:${activeCustomFoodPreference.id}` : foodPreferencePresetId}
         onClose={() => setShowFoodPresetSelect(false)}
         onSelect={(value) => {
+          if (value === '__create_custom__') {
+            beginCreateCustomFoodPreference();
+            return;
+          }
+          if (value.startsWith('custom:')) {
+            const id = value.slice('custom:'.length);
+            const preset = customFoodPreferences.find((item) => item.id === id);
+            if (!preset) return;
+            setActiveCustomFoodPreferenceId(id);
+            setSelectedFoodIds([]);
+            setMenu(null);
+            setStatus(`Preferenza personalizzata attiva: ${preset.name}.`);
+            return;
+          }
           const next = value as FoodPreferencePresetId;
+          setActiveCustomFoodPreferenceId(null);
           setFoodPreferencePresetId(next);
           setSelectedFoodIds([]);
           setMenu(null);
-          setShowFoodPresetSelect(false);
           const preset = FOOD_PREFERENCE_PRESETS.find((item) => item.id === next);
           setStatus(`Preset alimentare attivo: ${preset?.name || next}.`);
         }}

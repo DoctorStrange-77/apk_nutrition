@@ -178,7 +178,7 @@ export function ProgressPanel({ diaryDays, target, onApplyTarget }: Props) {
           onApplyTarget(recommendation.proposedTarget!);
           setLastAppliedDate(analysisDate);
           void setLocalValue(APPLIED_KEY, analysisDate);
-          setMessage('Nuovo target applicato. App Nutrition attenderà un nuovo check-in prima di proporre un’altra correzione.');
+          setMessage('Nuovo target applicato. Smart Nutrition attenderà un nuovo check-in prima di proporre un’altra correzione.');
         }}>Conferma e applica target</button>
       </>}
       {recommendation.proposedTarget && alreadyAdjusted && <div className="status progress-local-status">Correzione già applicata su questo check-in. Inserisci una nuova pesata prima di rivalutare il target.</div>}

@@ -152,7 +152,7 @@ export function WeeklyPlannerPanel(props: Props) {
         <div><p className="eyebrow red">WEEKLY PLANNER</p><h2>Genera la settimana</h2></div>
         <span className="weekly-engine-badge">ENGINE V2</span>
       </div>
-      <p className="muted">Ogni giorno parte sempre dai macronutrienti e dal timing. App Nutrition riduce le ripetizioni recenti senza sacrificare la precisione.</p>
+      <p className="muted">Ogni giorno parte sempre dai macronutrienti e dal timing. Smart Nutrition riduce le ripetizioni recenti senza sacrificare la precisione.</p>
       <div className="weekly-nav">
         <button className="date-arrow" onClick={() => moveWeek(-1)}>‹</button>
         <button className="weekly-range" onClick={resetToCurrentWeek}><small>SETTIMANA</small><strong>{weekLabel(config.weekStart)}</strong></button>
