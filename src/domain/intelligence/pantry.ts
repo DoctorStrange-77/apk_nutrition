@@ -96,8 +96,8 @@ const retailerScore = (food: LocalFood, retailer:string): number => {
 
 export function rankFoodsForRetailer(foods: LocalFood[], retailer: string): LocalFood[] {
   if (!retailer.trim()) return [...foods];
-  return [...foods].sort((a, b) => {
-    const score = retailerScore(b, retailer) - retailerScore(a, retailer);
-    return score !== 0 ? score : a.name.localeCompare(b.name);
-  });
+  return foods
+    .map((food, index) => ({ food, index, score: retailerScore(food, retailer) }))
+    .sort((a, b) => (b.score - a.score) || (a.index - b.index))
+    .map((entry) => entry.food);
 }

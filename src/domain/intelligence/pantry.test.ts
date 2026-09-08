@@ -65,6 +65,7 @@ describe('pantry and zero waste intelligence', () => {
   it('prioritizes retailer-tagged foods but never removes the others as if stock were known', () => {
     const ranked = rankFoodsForRetailer(foods, 'Lidl');
     expect(ranked[0].id).toBe('skyr-lidl');
+    expect(ranked.slice(1).map((food) => food.id)).toEqual(['rice', 'chicken']);
     expect(ranked).toHaveLength(foods.length);
     expect(ranked.map((food) => food.id).sort()).toEqual(foods.map((food) => food.id).sort());
   });
