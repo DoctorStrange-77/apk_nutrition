@@ -12,6 +12,7 @@ import { RecipeEditorModal } from '@/components/RecipeEditorModal';
 import { SavedMealModal } from '@/components/SavedMealModal';
 import { ChoicePopup } from '@/components/ChoicePopup';
 import { WeeklyPlannerPanel } from '@/components/WeeklyPlannerPanel';
+import { SmartIntelligencePanel } from '@/components/SmartIntelligencePanel';
 import { ProgressPanel } from '@/components/ProgressPanel';
 import { ProfilePanel } from '@/components/ProfilePanel';
 import { FoodEditorModal } from '@/components/FoodEditorModal';
@@ -37,6 +38,8 @@ import { defaultQuantityMode, gramsFromQuantity, manualItemQuantity, modeLabel, 
 import { defaultSmartNutritionSettings, normalizeSmartNutritionSettings } from '@/domain/intelligence/intelligenceState';
 import { rankFoodsByIntelligence, updateFoodSignal } from '@/domain/intelligence/personalFoodIntelligence';
 import { solveRecipeToTarget } from '@/domain/intelligence/recipeSolver';
+import { buildSmartFoodPool, resolveSmartTiming } from '@/domain/intelligence/smartGeneration';
+import { rebalanceRemainingDay } from '@/domain/intelligence/autopilot';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode, shouldUseWebBarcodeScanner } from '@/services/barcodeService';
 import { lookupOpenFoodFacts, searchOpenFoodFacts } from '@/services/openFoodFactsService';
@@ -63,7 +66,7 @@ import type {
   WeeklyPlanResult,
 } from '@/types/nutrition';
 
-type Tab = 'menu' | 'week' | 'progress' | 'profile' | 'timing' | 'foods' | 'saved';
+type Tab = 'menu' | 'smart' | 'week' | 'progress' | 'profile' | 'timing' | 'foods' | 'saved';
 type MenuMode = 'automatic' | 'manual';
 type DateModalMode = 'navigate' | 'copy-day' | 'copy-meal';
 type SetupProgress = { target: boolean; timing: boolean; generated: boolean };
@@ -204,17 +207,29 @@ export function App() {
     return rankFoodsByIntelligence(base, foodPreferenceSignals, smartSettings.variety, recentFoodIds);
   }, [preferenceFoods, selectedFoodIds, foodPreferenceSignals, smartSettings.variety, recentFoodIds]);
   const activeTiming = timings.find((timing) => timing.id === activeTimingId) || timings[0];
+  const activeTrainingContext = dailyTrainingContexts[activeDiaryDate] || null;
+  const smartGeneratorFoods = useMemo(
+    () => buildSmartFoodPool(generatorFoods, smartSettings, pantryItems),
+    [generatorFoods, smartSettings, pantryItems],
+  );
+  const effectiveTiming = useMemo(
+    () => activeTiming ? resolveSmartTiming(activeTiming, smartSettings, activeTrainingContext) : activeTiming,
+    [activeTiming, smartSettings, activeTrainingContext],
+  );
+  const effectiveDayKind = smartSettings.trainingAware && activeTrainingContext
+    ? (activeTrainingContext.isTrainingDay ? 'workout' : 'off')
+    : effectiveTiming?.dayKind === 'all' ? 'workout' : effectiveTiming?.dayKind || 'off';
   const kcal = kcalFromMacros(target);
-  const mealTargets = activeTiming ? calculateMealTargets(target, activeTiming) : [];
+  const mealTargets = effectiveTiming ? calculateMealTargets(target, effectiveTiming) : [];
   const manualActual = useMemo(() => macrosForManualDay(manualMeals), [manualMeals]);
   const hasManualEntries = useMemo(() => manualMeals.some((meal) => meal.items.length > 0), [manualMeals]);
-  const completionContext = useMemo(() => activeTiming ? buildSmartCompletionContext(target, activeTiming, manualMeals) : null, [target, activeTiming, manualMeals]);
+  const completionContext = useMemo(() => effectiveTiming ? buildSmartCompletionContext(target, effectiveTiming, manualMeals) : null, [target, effectiveTiming, manualMeals]);
   const replacementOriginal = useMemo(() => replacementContext && menu ? menu.meals[replacementContext.mealIndex]?.foods[replacementContext.foodIndex] || null : null, [replacementContext, menu]);
   const replacementSuggestions = useMemo(() => {
     if (!replacementOriginal) return [];
     const originalFood = foods.find((food) => food.id === replacementOriginal.foodId);
-    return suggestEquivalentFoods(replacementOriginal, originalFood, generatorFoods, 16);
-  }, [replacementOriginal, foods, generatorFoods]);
+    return suggestEquivalentFoods(replacementOriginal, originalFood, smartGeneratorFoods, 16);
+  }, [replacementOriginal, foods, smartGeneratorFoods]);
   const filteredFoods = useMemo(() => {
     const query = foodSearch.trim().toLowerCase();
     return foods.filter((food) => !query || `${food.name} ${food.brand || ''} ${food.subcategory || ''} ${food.barcode || ''}`.toLowerCase().includes(query));
@@ -451,19 +466,19 @@ export function App() {
   };
 
   const generate = (regenerate = false) => {
-    if (!activeTiming) return;
+    if (!effectiveTiming) return;
     if (!setupProgress.target) { setStatus('Prima conferma i macro di partenza.'); return; }
     try {
       const nextSeed = regenerate ? attemptSeed + 1 : attemptSeed;
       if (regenerate && menu?.lockedMealIndexes?.length) {
-        const lockContext = buildLockedRegenerationContext(menu, activeTiming);
+        const lockContext = buildLockedRegenerationContext(menu, effectiveTiming);
         const regenerated = generateNutritionMenu({
           target: lockContext.residualTarget,
           timing: lockContext.residualTiming,
-          foods: generatorFoods,
+          foods: smartGeneratorFoods,
           selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
           attemptSeed: nextSeed,
-          dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
+          dayKind: effectiveDayKind,
         });
         const merged = mergeUnlockedRegeneration(menu, regenerated, lockContext.unlockedIndexes);
         setAttemptSeed(nextSeed);
@@ -473,11 +488,11 @@ export function App() {
       }
       const result = generateNutritionMenu({
         target,
-        timing: activeTiming,
-        foods: generatorFoods,
+        timing: effectiveTiming,
+        foods: smartGeneratorFoods,
         selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
         attemptSeed: nextSeed,
-        dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
+        dayKind: effectiveDayKind,
       });
       setAttemptSeed(nextSeed);
       setMenu(result);
@@ -488,8 +503,35 @@ export function App() {
     }
   };
 
+  const runSmartAutopilot = (completedMealIndexes: number[], actualCompletedMacros: MacroTarget) => {
+    if (!menu || !activeTiming) {
+      setStatus('Autopilot: genera prima un menu.');
+      return;
+    }
+    try {
+      const nextSeed = attemptSeed + 1;
+      const result = rebalanceRemainingDay({
+        menu,
+        completedMealIndexes,
+        actualCompletedMacros,
+        timing: activeTiming,
+        foods: smartGeneratorFoods,
+        target,
+        emergencyMode: 'none',
+        trainingContext: smartSettings.trainingAware ? activeTrainingContext : null,
+        attemptSeed: nextSeed,
+      });
+      setAttemptSeed(nextSeed);
+      setMenu(result);
+      setMenuMode('automatic');
+      setStatus(`Autopilot: conservati ${completedMealIndexes.length} pasti consumati e ribilanciati i rimanenti.`);
+    } catch (error) {
+      setStatus(`Autopilot non riuscito: ${String(error)}`);
+    }
+  };
+
   const completeManualDay = (regenerate = false) => {
-    if (!activeTiming || !completionContext) return;
+    if (!effectiveTiming || !completionContext) return;
     if (!setupProgress.target) { setStatus('Prima conferma i macro di partenza.'); return; }
     if (!completionNeeded(completionContext.residualTarget)) {
       setCompletionPlan(null);
@@ -501,10 +543,10 @@ export function App() {
       const result = generateNutritionMenu({
         target: completionContext.residualTarget,
         timing: completionContext.residualTiming,
-        foods: generatorFoods,
+        foods: smartGeneratorFoods,
         selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
         attemptSeed: nextSeed,
-        dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
+        dayKind: effectiveDayKind,
       });
       setCompletionSeed(nextSeed);
       setCompletionPlan(result);
@@ -521,8 +563,8 @@ export function App() {
   };
 
   const useGeneratedMenuInDiary = () => {
-    if (!menu || !activeTiming) return;
-    const empty = emptyMealsForTiming(activeTiming);
+    if (!menu || !effectiveTiming) return;
+    const empty = emptyMealsForTiming(effectiveTiming);
     setManualMeals(applyCompletionPlan(empty, menu, foods));
     setFoodPreferenceSignals((current) =>
       menu.meals.flatMap((meal) => meal.foods)
@@ -545,7 +587,7 @@ export function App() {
   };
 
   const regenerateSingleMeal = (mealIndex: number) => {
-    if (!menu || !activeTiming) return;
+    if (!menu || !effectiveTiming) return;
     if (menu.lockedMealIndexes?.includes(mealIndex)) {
       setStatus('Questo pasto e bloccato. Sbloccalo prima di rigenerarlo.');
       return;
@@ -553,15 +595,15 @@ export function App() {
     const sourceMeal = menu.meals[mealIndex];
     if (!sourceMeal) return;
     try {
-      const singleTiming = buildSingleMealTiming(activeTiming, mealIndex);
+      const singleTiming = buildSingleMealTiming(effectiveTiming, mealIndex);
       const nextSeed = attemptSeed + 1;
       const replacement = generateNutritionMenu({
         target: sourceMeal.target,
         timing: singleTiming,
-        foods: generatorFoods,
+        foods: smartGeneratorFoods,
         selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
         attemptSeed: nextSeed,
-        dayKind: activeTiming.dayKind === 'all' ? 'workout' : activeTiming.dayKind,
+        dayKind: effectiveDayKind,
       });
       setAttemptSeed(nextSeed);
       setMenu(replaceGeneratedMeal(menu, mealIndex, replacement));
@@ -1149,6 +1191,21 @@ export function App() {
         </>}
       </>}
 
+      {tab === 'smart' && <SmartIntelligencePanel
+        settings={smartSettings}
+        onSettingsChange={setSmartSettings}
+        trainingContext={activeTrainingContext}
+        onTrainingContextChange={(context) => setDailyTrainingContexts((current) => ({ ...current, [activeDiaryDate]: context }))}
+        pantryItems={pantryItems}
+        onPantryChange={setPantryItems}
+        foods={foods}
+        menu={menu}
+        manualMeals={manualMeals}
+        target={target}
+        onGenerateSmart={() => { setMenuMode('automatic'); generate(!!menu); }}
+        onAutopilot={runSmartAutopilot}
+      />}
+
       {tab === 'week' && <WeeklyPlannerPanel
         foods={generatorFoods}
         timings={timings}
@@ -1196,7 +1253,7 @@ export function App() {
 
       <DateActionModal open={!!dateModalMode} mode={dateModalMode || 'navigate'} currentDate={activeDiaryDate} onClose={() => { setDateModalMode(null); setCopyMealIndex(null); }} onConfirm={handleDateAction} />
       <FoodReplacementModal open={!!replacementContext} original={replacementOriginal} suggestions={replacementSuggestions} onClose={() => setReplacementContext(null)} onSelect={applyFoodReplacement} />
-      <FoodEditorModal food={editingFood} onChange={setEditingFood} onClose={() => setEditingFood(null)} onSave={saveEditingFood} onDelete={deleteEditingFood} />
+      <FoodEditorModal food={editingFood} onChange={setEditingFood} onClose={() => setEditingFood(null)} onSave={saveEditingFood} onDelete={deleteEditingFood} showConfidence={smartSettings.dataConfidence} showRawCooked={smartSettings.rawCookedAssist} />
       <RecipeEditorModal
         recipe={editingRecipe}
         onChange={setEditingRecipe}

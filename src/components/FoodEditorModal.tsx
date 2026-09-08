@@ -6,7 +6,7 @@ import { scoreFoodDataConfidence } from '@/domain/intelligence/dataConfidence';
 import { rawCookedLabel } from '@/domain/intelligence/rawCooked';
 import type { FoodCategory, FoodPortionUnit, LocalFood, NutritionWeightBasis } from '@/types/nutrition';
 
-type Props = { food: LocalFood | null; onChange: (food: LocalFood) => void; onClose: () => void; onSave: () => void; onDelete: () => void };
+type Props = { food: LocalFood | null; onChange: (food: LocalFood) => void; onClose: () => void; onSave: () => void; onDelete: () => void; showConfidence?: boolean; showRawCooked?: boolean };
 const safeNumber = (value: string | number) => { const n = Number(value); return Number.isFinite(n) && n >= 0 ? n : 0; };
 const categoryLabel: Record<FoodCategory,string> = { carb:'Carboidrati', protein:'Proteine', fat:'Grassi', mixed:'Misto' };
 
@@ -15,7 +15,7 @@ const practicalUnits = (food: LocalFood): FoodPortionUnit[] => [
   ...(food.portionUnits || []),
 ].slice(0, 3);
 
-export function FoodEditorModal({ food, onChange, onClose, onSave, onDelete }: Props) {
+export function FoodEditorModal({ food, onChange, onClose, onSave, onDelete, showConfidence = true, showRawCooked = true }: Props) {
   const [showCategory, setShowCategory] = useState(false);
   const [showBasis, setShowBasis] = useState(false);
   const confidence = food ? scoreFoodDataConfidence(food) : null;
@@ -33,9 +33,9 @@ export function FoodEditorModal({ food, onChange, onClose, onSave, onDelete }: P
       {food && <>
         <div className="food-hero"><div className="food-hero-icon">{food.name.slice(0,1).toUpperCase()}</div><div><strong>{food.brand || 'Alimento personale'}</strong><span>{food.source}{food.barcode ? ` · ${food.barcode}` : ''}</span></div></div>
         <div className="nutrition-preview modal-nutrition"><span><small>CARB</small><strong>{food.carbs.toFixed(1)} g</strong></span><span><small>PRO</small><strong>{food.protein.toFixed(1)} g</strong></span><span><small>FAT</small><strong>{food.fat.toFixed(1)} g</strong></span><span><small>KCAL</small><strong>{kcalFromMacros(food).toFixed(0)}</strong></span></div>
-        {confidence && <div className={`food-confidence confidence-${confidence.label}`}>
+        {showConfidence && confidence && <div className={`food-confidence confidence-${confidence.label}`}>
           <span><small>AFFIDABILITÀ DATI</small><strong>{confidence.score}/100 · {confidence.label.toUpperCase()}</strong></span>
-          <p>{confidence.reasons[0]} · {rawCookedLabel(food)}</p>
+          <p>{confidence.reasons[0]}{showRawCooked ? ` · ${rawCookedLabel(food)}` : ''}</p>
         </div>}
         <div className="form-grid detail-grid modal-form">
           <label>Nome<input value={food.name} onChange={(e) => onChange({ ...food, name:e.target.value })} /></label>
@@ -51,12 +51,12 @@ export function FoodEditorModal({ food, onChange, onClose, onSave, onDelete }: P
         </div>
         <section className="food-portion-editor"><div><p className="eyebrow red">SMART PORTIONS</p><h3>Unità pratiche</h3><p className="muted">Definisci fino a 3 unità: fetta, vasetto, misurino, pezzo...</p></div>
           {[0,1,2].map((index) => { const unit = practicalUnits(food)[index]; return <div className="portion-unit-row" key={index}><input placeholder={`Unità ${index + 1}`} value={unit?.name || ''} onChange={(e) => setUnit(index, 'name', e.target.value)} /><label><input type="number" min="0" step="0.1" value={unit?.grams || 0} onChange={(e) => setUnit(index, 'grams', e.target.value)} /><span>g</span></label></div>; })}
-        </section>        <section className="food-portion-editor"><div><p className="eyebrow red">CRUDO / COTTO</p><h3>Conversione peso</h3><p className="muted">Il rapporto indica quanti grammi cotti ottieni da 1 g crudo. Esempio: 2,5 = 100 g crudi → 250 g cotti.</p></div>
+        </section>{showRawCooked && <section className="food-portion-editor"><div><p className="eyebrow red">CRUDO / COTTO</p><h3>Conversione peso</h3><p className="muted">Il rapporto indica quanti grammi cotti ottieni da 1 g crudo. Esempio: 2,5 = 100 g crudi → 250 g cotti.</p></div>
           <div className="form-grid detail-grid modal-form">
             <label>Valori nutrizionali riferiti a<button type="button" className="selector-field" onClick={() => setShowBasis(true)}><span>{food.nutritionWeightBasis === 'raw' ? 'Peso crudo' : food.nutritionWeightBasis === 'cooked' ? 'Peso cotto' : 'Nessuna conversione'}</span><b>›</b></button></label>
             <label>Rapporto cotto / crudo<input type="number" min="0" step="0.01" disabled={!food.nutritionWeightBasis} value={food.cookedWeightFactor ?? 0} onChange={(e) => onChange({ ...food, cookedWeightFactor:safeNumber(e.target.value) || undefined })} /></label>
           </div>
-        </section>
+        </section>}
       </>}
     </AppModal>
     <ChoicePopup open={showCategory && !!food} title="Categoria alimento" value={food?.category || 'mixed'} onClose={() => setShowCategory(false)} onSelect={(value) => food && onChange({ ...food, category:value as FoodCategory })} choices={[{value:'carb',label:'Carboidrati'},{value:'protein',label:'Proteine'},{value:'fat',label:'Grassi'},{value:'mixed',label:'Misto'}]} />

@@ -77,3 +77,92 @@
 @media (display-mode: standalone) {
   .pwa-install-banner { display: none; }
 }
+
+
+/* Smart Nutrition Intelligence 1.0 */
+.smart-intelligence-page{display:grid;gap:12px}
+.smart-hero{border-color:rgba(239,47,60,.25);background:radial-gradient(circle at 88% 0%,rgba(226,28,39,.18),transparent 34%),linear-gradient(150deg,rgba(31,13,16,.96),rgba(11,12,14,.99) 58%,rgba(5,6,8,.99))}
+.smart-engine-badge{padding:7px 10px;border:1px solid rgba(255,80,90,.28);border-radius:999px;background:rgba(155,12,20,.18);color:#ff7780;font-size:.63rem;font-weight:900;letter-spacing:.08em;white-space:nowrap}
+.smart-hero-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
+.smart-hero-kpis span,.smart-autopilot-summary span{display:grid;gap:4px;padding:11px 12px;border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.025)}
+.smart-hero-kpis small,.smart-autopilot-summary small{color:#7e8188;font-size:.62rem;font-weight:900;letter-spacing:.06em}
+.smart-hero-kpis strong,.smart-autopilot-summary strong{font-size:.8rem;color:#f3f3f4}
+.smart-primary-action,.smart-autopilot-button{width:100%;min-height:48px}
+.smart-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+.smart-section-head h3{margin:1px 0 0}
+.smart-count,.smart-ready,.smart-idle{padding:5px 9px;border-radius:999px;font-size:.68rem;font-weight:900;white-space:nowrap}
+.smart-count,.smart-ready{color:#fff;border:1px solid rgba(255,67,77,.28);background:rgba(177,16,26,.22)}
+.smart-idle{color:#81838a;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)}
+.smart-autopilot-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}
+.smart-toggle{min-height:38px;padding:8px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);color:#8f9299;font-weight:850}
+.smart-toggle.active{color:#fff;border-color:rgba(255,64,74,.38);background:linear-gradient(145deg,rgba(180,15,25,.38),rgba(91,8,14,.28))}
+.smart-training-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;align-items:end}
+.smart-training-grid label{font-size:.69rem;color:#85888f}
+.smart-training-grid label>span{display:none}
+.smart-training-grid input,.smart-training-grid select{min-height:42px;padding:9px 10px}
+.smart-emergency-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.smart-emergency-grid button{min-height:42px;border-radius:13px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.028);color:#999ca2;font-weight:800}
+.smart-emergency-grid button.active{color:#fff;border-color:rgba(255,62,72,.42);background:linear-gradient(145deg,rgba(191,17,28,.42),rgba(83,7,13,.30))}
+.smart-range{display:grid;gap:8px}
+.smart-range>span{display:flex;justify-content:space-between;color:#7e8187;font-size:.65rem}
+.smart-range input[type=range],.weekly-variety-control input[type=range]{padding:0;border:0;background:transparent;accent-color:#e72b35}
+.smart-toggle-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.smart-option{display:grid;gap:4px;min-height:72px;padding:12px;text-align:left;border:1px solid rgba(255,255,255,.075);border-radius:15px;background:rgba(255,255,255,.025);color:#f1f1f2}
+.smart-option small{color:#777a81;font-size:.69rem;line-height:1.35}
+.smart-option.active{border-color:rgba(255,60,70,.33);background:linear-gradient(140deg,rgba(155,14,23,.19),rgba(255,255,255,.025))}
+.smart-option.active small{color:#a1a3a8}
+.smart-pantry-panel{display:grid;gap:10px}
+.smart-pantry-search{position:relative}
+.smart-pantry-suggestions{position:absolute;z-index:25;left:0;right:0;top:calc(100% + 5px);padding:5px;border:1px solid rgba(255,255,255,.1);border-radius:15px;background:#101114;box-shadow:0 18px 38px rgba(0,0,0,.52)}
+.smart-pantry-suggestions button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:0;border-bottom:1px solid rgba(255,255,255,.055);background:transparent;color:#fff;text-align:left}
+.smart-pantry-suggestions button:last-child{border-bottom:0}
+.smart-pantry-suggestions span{display:grid;gap:2px}.smart-pantry-suggestions small{color:#7d8087}
+.smart-empty{margin:0;padding:14px;border:1px dashed rgba(255,255,255,.1);border-radius:14px;color:#7f8288;font-size:.75rem;line-height:1.45}
+.smart-pantry-list{display:grid;gap:8px}
+.smart-pantry-item{padding:11px;border:1px solid rgba(255,255,255,.07);border-radius:16px;background:rgba(255,255,255,.02)}
+.smart-pantry-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.smart-pantry-title>span{display:grid;gap:2px}.smart-pantry-title small{color:#797c82;font-size:.68rem}
+.smart-pantry-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.smart-pantry-grid label{position:relative;font-size:.65rem;color:#7e8187}
+.smart-pantry-grid label>span{position:absolute;right:9px;bottom:11px;color:#6f7278;font-size:.67rem}
+.smart-pantry-grid input{min-height:40px;padding:8px 25px 8px 9px}
+.smart-pantry-grid label:last-child input{padding-right:9px}
+.smart-explain-list{display:grid;gap:8px}
+.smart-explain-list article{padding:11px 12px;border:1px solid rgba(255,255,255,.065);border-radius:14px;background:rgba(255,255,255,.022)}
+.smart-explain-list article>div{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.smart-explain-list small{color:#ff6570;font-size:.65rem}
+.smart-explain-list p{margin:6px 0 0;color:#8f9298;font-size:.72rem;line-height:1.42}
+.smart-shopping-preview{display:grid;gap:7px}
+.smart-shopping-preview>div{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+.smart-shopping-preview>div:last-child{border-bottom:0}
+.smart-shopping-preview span{display:grid;gap:2px}.smart-shopping-preview small{color:#777a81;font-size:.68rem}.smart-shopping-preview b{color:#ff6670;font-size:.75rem;white-space:nowrap}
+
+/* Weekly adaptive controls */
+.weekly-smart-controls{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
+.weekly-variety-control{display:grid;gap:6px}.weekly-variety-control>span{display:flex;align-items:center;justify-content:space-between;gap:8px}.weekly-variety-control small{color:#787b82;font-size:.62rem}.weekly-variety-control strong{font-size:.72rem}
+.weekly-training-controls{display:grid;grid-template-columns:auto 118px minmax(120px,1fr);gap:7px;align-items:end;margin-top:8px}
+.weekly-training-controls label{font-size:.62rem;color:#777a80}.weekly-training-controls input,.weekly-training-controls select{min-height:38px;padding:7px 9px}
+
+/* Recipe solver */
+.recipe-solver-panel{display:grid;grid-template-columns:minmax(0,1fr) 1.1fr auto;gap:12px;align-items:end;margin:12px 0 16px;padding:13px;border:1px solid rgba(255,62,72,.18);border-radius:17px;background:linear-gradient(140deg,rgba(157,13,22,.10),rgba(255,255,255,.02))}
+.recipe-solver-panel h3{margin:2px 0 3px}.recipe-solver-panel .muted{margin:0;font-size:.7rem}
+.recipe-solver-targets{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.recipe-solver-targets label{position:relative;font-size:.68rem}.recipe-solver-targets span{position:absolute;right:8px;bottom:10px;color:#6f7278;font-size:.65rem}.recipe-solver-targets input{min-height:40px;padding:8px 23px 8px 8px}
+
+/* Eight-item bottom navigation */
+.bottom-nav{overflow-x:auto;scrollbar-width:none}.bottom-nav::-webkit-scrollbar{display:none}
+.bottom-nav-inner{grid-template-columns:repeat(8,minmax(0,1fr))}
+
+@media(max-width:720px){
+  .smart-hero-kpis,.smart-training-grid,.smart-pantry-grid{grid-template-columns:repeat(2,1fr)}
+  .smart-emergency-grid{grid-template-columns:repeat(2,1fr)}
+  .weekly-smart-controls{grid-template-columns:1fr 1fr}.weekly-variety-control{grid-column:1/-1}
+  .weekly-training-controls{grid-template-columns:1fr 1fr}.weekly-training-controls select{grid-column:1/-1}
+  .recipe-solver-panel{grid-template-columns:1fr}.recipe-solver-panel .primary{width:100%}
+  .bottom-nav-inner{grid-template-columns:repeat(8,64px);width:max-content;min-width:100%}
+}
+@media(max-width:430px){
+  .smart-hero-kpis,.smart-autopilot-summary,.smart-toggle-grid,.smart-training-grid,.smart-pantry-grid{grid-template-columns:1fr}
+  .smart-section-head{align-items:flex-start}.smart-engine-badge{font-size:.56rem;padding:6px 8px}
+  .weekly-smart-controls,.weekly-training-controls{grid-template-columns:1fr}.weekly-variety-control,.weekly-training-controls select{grid-column:auto}
+  .recipe-solver-targets{grid-template-columns:repeat(3,1fr)}
+}
