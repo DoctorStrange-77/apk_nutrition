@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-nutrition-v120';
+const CACHE_NAME = 'smart-nutrition-v130';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/smart-nutrition-icon.svg'];
 
 self.addEventListener('install', (event) => {
