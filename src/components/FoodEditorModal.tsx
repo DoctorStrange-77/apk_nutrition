@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { AppModal } from '@/components/AppModal';
 import { ChoicePopup } from '@/components/ChoicePopup';
 import { kcalFromMacros } from '@/domain/manualMenu';
+import { scoreFoodDataConfidence } from '@/domain/intelligence/dataConfidence';
+import { rawCookedLabel } from '@/domain/intelligence/rawCooked';
 import type { FoodCategory, FoodPortionUnit, LocalFood, NutritionWeightBasis } from '@/types/nutrition';
 
 type Props = { food: LocalFood | null; onChange: (food: LocalFood) => void; onClose: () => void; onSave: () => void; onDelete: () => void };
@@ -16,6 +18,7 @@ const practicalUnits = (food: LocalFood): FoodPortionUnit[] => [
 export function FoodEditorModal({ food, onChange, onClose, onSave, onDelete }: Props) {
   const [showCategory, setShowCategory] = useState(false);
   const [showBasis, setShowBasis] = useState(false);
+  const confidence = food ? scoreFoodDataConfidence(food) : null;
   const setUnit = (index: number, field: 'name' | 'grams', value: string | number) => {
     if (!food) return;
     const units = practicalUnits(food);
@@ -30,6 +33,10 @@ export function FoodEditorModal({ food, onChange, onClose, onSave, onDelete }: P
       {food && <>
         <div className="food-hero"><div className="food-hero-icon">{food.name.slice(0,1).toUpperCase()}</div><div><strong>{food.brand || 'Alimento personale'}</strong><span>{food.source}{food.barcode ? ` · ${food.barcode}` : ''}</span></div></div>
         <div className="nutrition-preview modal-nutrition"><span><small>CARB</small><strong>{food.carbs.toFixed(1)} g</strong></span><span><small>PRO</small><strong>{food.protein.toFixed(1)} g</strong></span><span><small>FAT</small><strong>{food.fat.toFixed(1)} g</strong></span><span><small>KCAL</small><strong>{kcalFromMacros(food).toFixed(0)}</strong></span></div>
+        {confidence && <div className={`food-confidence confidence-${confidence.label}`}>
+          <span><small>AFFIDABILITÀ DATI</small><strong>{confidence.score}/100 · {confidence.label.toUpperCase()}</strong></span>
+          <p>{confidence.reasons[0]} · {rawCookedLabel(food)}</p>
+        </div>}
         <div className="form-grid detail-grid modal-form">
           <label>Nome<input value={food.name} onChange={(e) => onChange({ ...food, name:e.target.value })} /></label>
           <label>Marca<input value={food.brand || ''} onChange={(e) => onChange({ ...food, brand:e.target.value })} /></label>
