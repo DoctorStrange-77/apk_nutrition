@@ -36,6 +36,7 @@ import { createCustomFoodPreference, resolveCustomFoodPreferenceFoods, validateC
 import { defaultQuantityMode, gramsFromQuantity, manualItemQuantity, modeLabel, quantityOptions, setManualItemQuantity, switchManualItemMode } from '@/domain/smartPortions';
 import { defaultSmartNutritionSettings, normalizeSmartNutritionSettings } from '@/domain/intelligence/intelligenceState';
 import { rankFoodsByIntelligence, updateFoodSignal } from '@/domain/intelligence/personalFoodIntelligence';
+import { solveRecipeToTarget } from '@/domain/intelligence/recipeSolver';
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
 import { scanProductBarcode, shouldUseWebBarcodeScanner } from '@/services/barcodeService';
 import { lookupOpenFoodFacts, searchOpenFoodFacts } from '@/services/openFoodFactsService';
@@ -960,6 +961,14 @@ export function App() {
     setStatus(`Aggiunto pasto salvato: ${template.name}.`);
   };
 
+  const optimizeRecipe = (target: MacroTarget) => {
+    if (!editingRecipe) return;
+    const solved = solveRecipeToTarget(editingRecipe, target);
+    setEditingRecipe(solved.recipe);
+    const residual = solved.residuals;
+    setStatus(`Recipe Solver: ${solved.status === 'solved' ? 'target raggiunto' : 'migliore soluzione possibile'} · residuo ${residual.carbs.toFixed(1)}C / ${residual.protein.toFixed(1)}P / ${residual.fat.toFixed(1)}F.`);
+  };
+
   const saveRecipe = () => {
     if (!editingRecipe) return;
     const errors = validateRecipe(editingRecipe);
@@ -1197,6 +1206,7 @@ export function App() {
         onAddIngredient={() => { setRecipePickerSearch(''); setRecipePickerOpen(true); }}
         onRemoveIngredient={(index) => setEditingRecipe((current) => current ? { ...current, ingredients: current.ingredients.filter((_, itemIndex) => itemIndex !== index) } : current)}
         onUpdateIngredientGrams={(index, grams) => setEditingRecipe((current) => current ? { ...current, ingredients: current.ingredients.map((item, itemIndex) => itemIndex === index ? { ...item, grams } : item) } : current)}
+        onOptimize={optimizeRecipe}
       />
       <SavedMealModal
         open={!!savedMealMode}

@@ -1,7 +1,8 @@
+import { useEffect, useState } from 'react';
 import { AppModal } from '@/components/AppModal';
 import { kcalFromMacros } from '@/domain/manualMenu';
 import { recipeTotals, recipeWeight } from '@/domain/recipes';
-import type { Recipe } from '@/types/nutrition';
+import type { MacroTarget, Recipe } from '@/types/nutrition';
 
 type Props = {
   recipe: Recipe | null;
@@ -12,6 +13,7 @@ type Props = {
   onAddIngredient: () => void;
   onRemoveIngredient: (index: number) => void;
   onUpdateIngredientGrams: (index: number, grams: number) => void;
+  onOptimize: (target: MacroTarget) => void;
 };
 
 const safe = (value: string | number) => {
@@ -20,8 +22,18 @@ const safe = (value: string | number) => {
 };
 
 export function RecipeEditorModal(props: Props) {
-  const { recipe, onChange, onClose, onSave, onDelete, onAddIngredient, onRemoveIngredient, onUpdateIngredientGrams } = props;
+  const { recipe, onChange, onClose, onSave, onDelete, onAddIngredient, onRemoveIngredient, onUpdateIngredientGrams, onOptimize } = props;
+  const [solverTarget, setSolverTarget] = useState<MacroTarget>({ carbs:0, protein:0, fat:0 });
   const totals = recipe ? recipeTotals(recipe) : { carbs: 0, protein: 0, fat: 0 };
+  useEffect(() => {
+    if (!recipe) return;
+    const current = recipeTotals(recipe);
+    setSolverTarget({
+      carbs:Math.round(current.carbs),
+      protein:Math.round(current.protein),
+      fat:Math.round(current.fat),
+    });
+  }, [recipe?.id]);
   const rawWeight = recipe ? recipeWeight(recipe.ingredients) : 0;
   const finalWeight = Math.max(1, recipe?.cookedWeightGrams || rawWeight || 1);
   const per100 = {
@@ -42,6 +54,15 @@ export function RecipeEditorModal(props: Props) {
         <span><small>FAT /100g</small><strong>{per100.fat.toFixed(1)} g</strong></span>
         <span><small>KCAL /100g</small><strong>{kcalFromMacros(per100).toFixed(0)}</strong></span>
       </div>
+      <section className="recipe-solver-panel">
+        <div><p className="eyebrow red">RECIPE MACRO SOLVER</p><h3>Ottimizza la preparazione</h3><p className="muted">Target riferito all'intera ricetta.</p></div>
+        <div className="recipe-solver-targets">
+          <label>C<input type="number" min="0" step="1" value={solverTarget.carbs} onChange={(event) => setSolverTarget((current) => ({ ...current, carbs:safe(event.target.value) }))} /><span>g</span></label>
+          <label>P<input type="number" min="0" step="1" value={solverTarget.protein} onChange={(event) => setSolverTarget((current) => ({ ...current, protein:safe(event.target.value) }))} /><span>g</span></label>
+          <label>F<input type="number" min="0" step="1" value={solverTarget.fat} onChange={(event) => setSolverTarget((current) => ({ ...current, fat:safe(event.target.value) }))} /><span>g</span></label>
+        </div>
+        <button className="primary" disabled={!recipe.ingredients.length || kcalFromMacros(solverTarget) <= 0} onClick={() => onOptimize(solverTarget)}>Ottimizza ricetta</button>
+      </section>
       <div className="form-grid detail-grid modal-form recipe-main-form">
         <label>Nome ricetta<input value={recipe.name} onChange={(e) => onChange({ ...recipe, name: e.target.value })} /></label>
         <label>Peso finale preparazione g<input type="number" min="1" value={recipe.cookedWeightGrams || ''} onChange={(e) => onChange({ ...recipe, cookedWeightGrams: safe(e.target.value) })} /></label>
