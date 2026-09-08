@@ -7,6 +7,7 @@ export interface ProgressCheckIn {
   date: string;
   weightKg: number;
   note?: string;
+  source?: 'manual' | 'diary';
   createdAt: string;
   updatedAt: string;
 }
@@ -283,4 +284,31 @@ export function buildTargetRecommendation(
     weeklyRatePct,
     adherencePct,
   };
+}
+
+export function mergeCheckInsWithDiaryWeights(
+  entries: ProgressCheckIn[],
+  diaryDays: Record<string, DiaryDay>,
+): ProgressCheckIn[] {
+  const merged = normalizeCheckIns(
+    entries.map((entry) => ({ ...entry, source: entry.source || 'manual' })),
+  );
+  const byDate = new Map(merged.map((entry) => [entry.date, entry]));
+
+  Object.entries(diaryDays).forEach(([date, day]) => {
+    const weight = day?.recovery?.morningWeightKg;
+    if (!Number.isFinite(weight) || !weight || weight <= 0 || weight > 400) return;
+    const existing = byDate.get(date);
+    const timestamp = day.updatedAt || existing?.updatedAt || `${date}T08:00:00.000Z`;
+    byDate.set(date, {
+      date,
+      weightKg: Math.round(weight * 100) / 100,
+      note: existing?.note,
+      source: 'diary',
+      createdAt: existing?.createdAt || timestamp,
+      updatedAt: timestamp,
+    });
+  });
+
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }

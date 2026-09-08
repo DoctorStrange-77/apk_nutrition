@@ -5,6 +5,7 @@ import {
   buildTargetRecommendation,
   calculateDiaryAdherence,
   calculateWeightTrend,
+  mergeCheckInsWithDiaryWeights,
   type ProgressCheckIn,
 } from './progressAnalytics';
 
@@ -110,5 +111,44 @@ describe('progress analytics', () => {
     );
     expect(recommendation.kind).toBe('hold');
     expect(recommendation.proposedTarget).toBeUndefined();
+  });
+});
+
+describe('diary weight integration', () => {
+  it('merges diary morning weights with manual check-ins and deduplicates by date', () => {
+    const manual = [
+      entry('2026-09-07', 80.2),
+      entry('2026-09-08', 80.1),
+    ];
+    const d8 = diaryDay('2026-09-08');
+    d8.recovery = { morningWeightKg:79.9 };
+    const d9 = diaryDay('2026-09-09');
+    d9.recovery = { morningWeightKg:79.8 };
+
+    const merged = mergeCheckInsWithDiaryWeights(manual, {
+      '2026-09-08':d8,
+      '2026-09-09':d9,
+    });
+
+    expect(merged).toHaveLength(3);
+    expect(merged.map((item)=>item.date)).toEqual([
+      '2026-09-07',
+      '2026-09-08',
+      '2026-09-09',
+    ]);
+    expect(merged.find((item)=>item.date==='2026-09-08')).toMatchObject({
+      weightKg:79.9,
+      source:'diary',
+    });
+    expect(merged.find((item)=>item.date==='2026-09-07')?.source).toBe('manual');
+  });
+
+  it('ignores invalid diary weights and leaves the manual check-in intact', () => {
+    const manual = [entry('2026-09-08',80.1)];
+    const d8 = diaryDay('2026-09-08');
+    d8.recovery = { morningWeightKg:0 };
+    const merged = mergeCheckInsWithDiaryWeights(manual, {'2026-09-08':d8});
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({weightKg:80.1,source:'manual'});
   });
 });

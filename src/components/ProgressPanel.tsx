@@ -6,6 +6,7 @@ import {
   calculateDiaryAdherence,
   calculateWeightTrend,
   deleteCheckIn,
+  mergeCheckInsWithDiaryWeights,
   normalizeCheckIns,
   upsertCheckIn,
   type ProgressCheckIn,
@@ -98,8 +99,12 @@ export function ProgressPanel({ diaryDays, target, onApplyTarget }: Props) {
     void setLocalValue(SETTINGS_KEY, settings);
   }, [loaded, settings]);
 
-  const trend = useMemo(() => calculateWeightTrend(entries), [entries]);
-  const analysisDate = entries.length ? entries[entries.length - 1].date : localDateKey();
+  const effectiveEntries = useMemo(
+    () => mergeCheckInsWithDiaryWeights(entries, diaryDays),
+    [entries, diaryDays],
+  );
+  const trend = useMemo(() => calculateWeightTrend(effectiveEntries), [effectiveEntries]);
+  const analysisDate = effectiveEntries.length ? effectiveEntries[effectiveEntries.length - 1].date : localDateKey();
   const adherence = useMemo(() => calculateDiaryAdherence(diaryDays, analysisDate, 7), [diaryDays, analysisDate]);
   const alreadyAdjusted = lastAppliedDate === analysisDate;
   const recommendation = useMemo(
@@ -108,6 +113,11 @@ export function ProgressPanel({ diaryDays, target, onApplyTarget }: Props) {
   );
 
   const saveCheckIn = () => {
+    const diaryWeight = diaryDays[date]?.recovery?.morningWeightKg;
+    if (Number.isFinite(diaryWeight) && diaryWeight! > 0) {
+      setMessage('Per questa data il peso è già registrato nel Diario. Modificalo da Diario → Recovery per evitare duplicati.');
+      return;
+    }
     const parsed = Number(weight.replace(',', '.'));
     if (!date || !Number.isFinite(parsed) || parsed <= 0 || parsed > 400) {
       setMessage('Inserisci una data e un peso valido.');
@@ -129,7 +139,7 @@ export function ProgressPanel({ diaryDays, target, onApplyTarget }: Props) {
         <div><p className="eyebrow red">CHECK-IN ADATTIVO</p><h2>Progressi</h2></div>
         <span className="progress-engine-badge">LOCAL</span>
       </div>
-      <p className="muted">Il trend suggerisce eventuali correzioni dei macro, ma nessun target viene modificato senza la tua conferma.</p>
+      <p className="muted">Il trend usa automaticamente anche il peso mattutino del Diario. Il check-in manuale resta disponibile per le date senza peso nel Diario; nessun target viene modificato senza conferma.</p>
       <div className="progress-goal-switch">
         {(Object.keys(goalLabel) as ProgressGoal[]).map((goal) => <button key={goal} className={settings.goal === goal ? 'active' : ''} onClick={() => changeGoal(goal)}>{goalLabel[goal]}</button>)}
       </div>
@@ -154,7 +164,7 @@ export function ProgressPanel({ diaryDays, target, onApplyTarget }: Props) {
         <div><small>VARIAZIONE</small><strong className={trend.weeklyChangeKg != null && trend.weeklyChangeKg > 0 ? 'warn' : 'ok'}>{trend.weeklyChangeKg == null ? '—' : `${signed(trend.weeklyChangeKg)} kg`}</strong></div>
         <div><small>RATE / SETT.</small><strong>{trend.weeklyRatePct == null ? '—' : `${signed(trend.weeklyRatePct)}%`}</strong></div>
       </div>
-      <WeightSparkline entries={entries} />
+      <WeightSparkline entries={effectiveEntries} />
     </section>
 
     <section className="card progress-adherence-card">
@@ -184,12 +194,14 @@ export function ProgressPanel({ diaryDays, target, onApplyTarget }: Props) {
       {recommendation.proposedTarget && alreadyAdjusted && <div className="status progress-local-status">Correzione già applicata su questo check-in. Inserisci una nuova pesata prima di rivalutare il target.</div>}
     </section>
 
-    {!!entries.length && <section className="card progress-history-card">
-      <div className="row-between"><h2>Storico peso</h2><span className="saved-count">{entries.length}</span></div>
+    {!!effectiveEntries.length && <section className="card progress-history-card">
+      <div className="row-between"><h2>Storico peso</h2><span className="saved-count">{effectiveEntries.length}</span></div>
       <div className="progress-history-list">
-        {[...entries].reverse().slice(0, 30).map((entry) => <div className="progress-history-row" key={entry.date}>
-          <span><strong>{entry.weightKg.toFixed(1)} kg</strong><small>{dateLabel(entry.date)}{entry.note ? ` · ${entry.note}` : ''}</small></span>
-          <button className="danger" onClick={() => setEntries((current) => deleteCheckIn(current, entry.date))}>Elimina</button>
+        {[...effectiveEntries].reverse().slice(0, 30).map((entry) => <div className="progress-history-row" key={entry.date}>
+          <span><strong>{entry.weightKg.toFixed(1)} kg</strong><small>{dateLabel(entry.date)}{entry.note ? ` · ${entry.note}` : ''}{entry.source === 'diary' ? ' · Diario' : ''}</small></span>
+          {entry.source === 'diary'
+            ? <span className="progress-source-badge">DIARIO</span>
+            : <button className="danger" onClick={() => setEntries((current) => deleteCheckIn(current, entry.date))}>Elimina</button>}
         </div>)}
       </div>
     </section>}

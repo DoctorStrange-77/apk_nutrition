@@ -279,3 +279,5 @@
   .diary-chart-key{justify-content:flex-start}
   .diary-line-chart{height:130px}
 }
+
+.progress-source-badge{padding:5px 8px;border-radius:999px;border:1px solid rgba(255,63,73,.28);background:rgba(153,13,22,.2);color:#ff6b74;font-size:.58rem;font-weight:900;letter-spacing:.06em;white-space:nowrap}
