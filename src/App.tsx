@@ -22,7 +22,7 @@ import { NewFoodModal } from '@/components/NewFoodModal';
 import { TimingEditorModal } from '@/components/TimingEditorModal';
 import { WebBarcodeScannerModal } from '@/components/WebBarcodeScannerModal';
 import { APP_CORE_FOODS } from '@/data/appCoreFoods';
-import { FOOD_PREFERENCE_PRESETS, filterFoodsByPreferencePreset } from '@/data/foodPreferencePresets';
+import { FOOD_PREFERENCE_PRESETS, filterFoodsByPreferencePreset, resolveFoodPreferencePresetId } from '@/data/foodPreferencePresets';
 import { BUILT_IN_TIMINGS, DEFAULT_BUILT_IN_TIMING_ID, migrateBuiltInTimingId } from '@/data/builtInTimings';
 import { calculateMealTargets, createEmptyTiming, timingTotals, validateTimingTemplate } from '@/domain/timing';
 import { kcalFromMacros, macrosForManualDay, macrosForManualItem, macrosForManualMeal } from '@/domain/manualMenu';
@@ -292,7 +292,7 @@ export function App() {
         setMenu(initialDay.generatedMenu ? structuredClone(initialDay.generatedMenu) : null);
         setMenuMode('manual');
         setSelectedFoodIds(snapshot.selectedFoodIds || []);
-        setFoodPreferencePresetId(snapshot.foodPreferencePresetId || 'all');
+        setFoodPreferencePresetId(resolveFoodPreferencePresetId(snapshot.foodPreferencePresetId));
         setFavoriteFoodIds(snapshot.favoriteFoodIds || []);
         setRecentFoodIds(snapshot.recentFoodIds || []);
       } catch (error) {

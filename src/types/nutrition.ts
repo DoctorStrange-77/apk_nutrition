@@ -2,7 +2,7 @@ export type DayKind = 'workout' | 'off' | 'recovery';
 export type MealWorkoutTiming = 'pre' | 'post' | 'none';
 export type MealTag = 'breakfast' | 'snack' | 'lunch' | 'dinner' | 'prenanna';
 export type FoodCategory = 'carb' | 'protein' | 'fat' | 'mixed';
-export type FoodPreferencePresetId = 'all' | 'bodybuilding';
+export type FoodPreferencePresetId = 'all' | 'bodybuilding' | 'high_protein' | 'mediterranean' | 'vegetarian' | 'vegan' | 'whole_foods' | 'quick_meals';
 
 export interface MacroTarget {
   carbs: number;

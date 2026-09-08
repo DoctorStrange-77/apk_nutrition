@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { AppModal } from '@/components/AppModal';
 import { ChoicePopup } from '@/components/ChoicePopup';
+import { WeeklyKcalBars } from '@/components/NutritionCharts';
 import { localDateKey } from '@/domain/diary';
 import {
   buildShoppingList,
@@ -191,6 +192,7 @@ export function WeeklyPlannerPanel(props: Props) {
 
     {result && <section className="card weekly-result-card">
       <div className="row-between"><div><p className="eyebrow red">PIANO PRONTO</p><h2>{result.days.length} giorni generati</h2></div><button className="primary small" onClick={() => onApplyWeek(result)}>Porta nel diario</button></div>
+      <WeeklyKcalBars result={result} />
       <div className="weekly-result-days">
         {result.days.map((day) => <button className="weekly-result-day" key={day.date} onClick={() => setDetailDate(day.date)}>
           <span><strong>{dateLabel(day.date)}</strong><small>{day.menu.status} · {day.menu.actualKcal.toFixed(0)} kcal</small></span>

@@ -1,4 +1,4 @@
-import { kcalFromMacros } from '@/domain/manualMenu';
+import { CalorieRing, MacroSplitDonut } from '@/components/NutritionCharts';
 import type { MacroTarget } from '@/types/nutrition';
 
 type Props = {
@@ -10,32 +10,23 @@ type Props = {
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
 
 export function TodaySummaryCard({ target, consumed, onOpenGenerator }: Props) {
-  const targetKcal = kcalFromMacros(target);
-  const consumedKcal = kcalFromMacros(consumed);
-  const remaining = Math.max(0, targetKcal - consumedKcal);
   const rows = [
-    ['Carboidrati', consumed.carbs, target.carbs],
-    ['Proteine', consumed.protein, target.protein],
-    ['Grassi', consumed.fat, target.fat],
+    ['carb', 'Carboidrati', consumed.carbs, target.carbs],
+    ['protein', 'Proteine', consumed.protein, target.protein],
+    ['fat', 'Grassi', consumed.fat, target.fat],
   ] as const;
 
   return <section className="today-summary-card">
-    <div className="today-calorie-hero">
-      <span><small>RIMANENTI</small><strong>{remaining.toFixed(0)}</strong><em>kcal</em></span>
-      <div className="today-kcal-equation">
-        <span><b>{targetKcal.toFixed(0)}</b><small>Obiettivo</small></span>
-        <i>−</i>
-        <span><b>{consumedKcal.toFixed(0)}</b><small>Consumate</small></span>
-        <i>=</i>
-        <span className="accent"><b>{remaining.toFixed(0)}</b><small>Residuo</small></span>
-      </div>
+    <div className="today-chart-grid">
+      <CalorieRing target={target} actual={consumed} />
+      <MacroSplitDonut actual={consumed} />
     </div>
     <div className="today-macro-progress">
-      {rows.map(([label, actual, goal]) => {
+      {rows.map(([key, label, actual, goal]) => {
         const percent = goal > 0 ? clamp(actual / goal * 100) : 0;
-        return <div className="today-macro-row" key={label}>
+        return <div className="today-macro-row" key={key}>
           <div><strong>{label}</strong><span>{actual.toFixed(1)} / {goal.toFixed(0)} g</span></div>
-          <div className="today-progress-track"><i style={{ width: `${percent}%` }} /></div>
+          <div className="today-progress-track"><i className={key} style={{ width: `${percent}%` }} /></div>
         </div>;
       })}
     </div>
