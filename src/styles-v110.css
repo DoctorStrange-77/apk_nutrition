@@ -148,9 +148,9 @@
 .recipe-solver-panel h3{margin:2px 0 3px}.recipe-solver-panel .muted{margin:0;font-size:.7rem}
 .recipe-solver-targets{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.recipe-solver-targets label{position:relative;font-size:.68rem}.recipe-solver-targets span{position:absolute;right:8px;bottom:10px;color:#6f7278;font-size:.65rem}.recipe-solver-targets input{min-height:40px;padding:8px 23px 8px 8px}
 
-/* Eight-item bottom navigation */
+/* Nine-item bottom navigation */
 .bottom-nav{overflow-x:auto;scrollbar-width:none}.bottom-nav::-webkit-scrollbar{display:none}
-.bottom-nav-inner{grid-template-columns:repeat(8,minmax(0,1fr))}
+.bottom-nav-inner{grid-template-columns:repeat(9,minmax(0,1fr))}
 
 @media(max-width:720px){
   .smart-hero-kpis,.smart-training-grid,.smart-pantry-grid{grid-template-columns:repeat(2,1fr)}
@@ -158,11 +158,73 @@
   .weekly-smart-controls{grid-template-columns:1fr 1fr}.weekly-variety-control{grid-column:1/-1}
   .weekly-training-controls{grid-template-columns:1fr 1fr}.weekly-training-controls select{grid-column:1/-1}
   .recipe-solver-panel{grid-template-columns:1fr}.recipe-solver-panel .primary{width:100%}
-  .bottom-nav-inner{grid-template-columns:repeat(8,64px);width:max-content;min-width:100%}
+  .bottom-nav-inner{grid-template-columns:repeat(9,64px);width:max-content;min-width:100%}
 }
 @media(max-width:430px){
   .smart-hero-kpis,.smart-autopilot-summary,.smart-toggle-grid,.smart-training-grid,.smart-pantry-grid{grid-template-columns:1fr}
   .smart-section-head{align-items:flex-start}.smart-engine-badge{font-size:.56rem;padding:6px 8px}
   .weekly-smart-controls,.weekly-training-controls{grid-template-columns:1fr}.weekly-variety-control,.weekly-training-controls select{grid-column:auto}
   .recipe-solver-targets{grid-template-columns:repeat(3,1fr)}
+}
+
+
+/* Nutrition + Recovery Diary */
+.nutrition-recovery-diary{display:grid;gap:12px}
+.diary-recovery-hero{display:grid;gap:10px;border-color:rgba(239,47,60,.2);background:radial-gradient(circle at 85% 0%,rgba(199,24,34,.14),transparent 38%),linear-gradient(145deg,rgba(23,12,15,.97),rgba(8,9,11,.99))}
+.diary-recovery-date-nav{display:grid;grid-template-columns:42px 1fr 42px;gap:8px;align-items:center}
+.diary-recovery-top-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+.diary-recovery-badges{display:flex;justify-content:center;gap:7px;flex-wrap:wrap}
+.diary-recovery-badges span{padding:5px 9px;border-radius:999px;font-size:.62rem;font-weight:900;letter-spacing:.07em}
+.diary-recovery-badges .training{color:#fff;background:rgba(178,17,27,.28);border:1px solid rgba(255,66,76,.32)}
+.diary-recovery-badges .rest{color:#a8abb1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+.diary-recovery-badges .local{color:#9da0a6;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07)}
+.diary-adherence-score{font-size:1.55rem;color:#ff6570}
+.diary-nutrition-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.diary-nutrition-grid>div{display:grid;gap:3px;padding:11px 12px;border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.025)}
+.diary-nutrition-grid small{color:#7c7f86;font-size:.62rem;font-weight:900;letter-spacing:.06em}
+.diary-nutrition-grid strong{font-size:.82rem}
+.diary-recovery-input-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.diary-recovery-input-grid label,.diary-bowel-create>label{position:relative;font-size:.68rem;color:#85888f}
+.diary-recovery-input-grid input,.diary-bowel-create input{min-height:42px;padding:9px 27px 9px 10px}
+.diary-recovery-input-grid label>span{position:absolute;right:9px;bottom:11px;color:#70737a;font-size:.66rem}
+.diary-scale-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:12px}
+.diary-scale-grid.compact{margin-top:8px}
+.diary-scale-field{display:grid;gap:6px;padding:10px 11px;border:1px solid rgba(255,255,255,.065);border-radius:13px;background:rgba(255,255,255,.02)}
+.diary-scale-field>span{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.diary-scale-field small{color:#777a81;font-size:.6rem;font-weight:900;letter-spacing:.05em}
+.diary-scale-field strong{font-size:.72rem;color:#f0f0f2}
+.diary-scale-field input{padding:0;border:0;background:transparent;accent-color:#e32a34}
+.diary-digestion-block{display:grid;gap:7px;margin-top:12px}.diary-digestion-block.compact{margin-top:9px}
+.diary-digestion-block>small{color:#787b82;font-size:.61rem;font-weight:900;letter-spacing:.06em}
+.diary-choice-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.diary-choice-row button,.diary-symptom-toggle,.diary-bristol-selector button,.diary-bowel-meals button{min-height:38px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);color:#96999f;font-weight:800}
+.diary-choice-row button.active,.diary-symptom-toggle.active,.diary-bristol-selector button.active,.diary-bowel-meals button.active{color:#fff;border-color:rgba(255,66,76,.35);background:linear-gradient(145deg,rgba(171,16,25,.32),rgba(79,8,13,.25))}
+.diary-symptom-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}
+.diary-bristol-selector{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:12px}
+.diary-bristol-selector button{display:grid;gap:2px;padding:7px 4px}
+.diary-bristol-selector strong{font-size:.95rem}.diary-bristol-selector small{font-size:.52rem;color:#73767d;line-height:1.15}
+.diary-bowel-create{display:grid;grid-template-columns:118px 1fr auto;gap:9px;align-items:end;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
+.diary-bowel-meals{display:grid;gap:6px}.diary-bowel-meals>small{font-size:.58rem;color:#777a81;font-weight:900}.diary-bowel-meals>div{display:flex;gap:6px;flex-wrap:wrap}.diary-bowel-meals button{min-height:34px;padding:6px 9px;font-size:.67rem}
+.diary-bowel-list{display:grid;gap:7px;margin-top:12px}
+.diary-bowel-list>div{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid rgba(255,255,255,.06);border-radius:12px;background:rgba(255,255,255,.02)}
+.diary-bowel-list span{display:grid;gap:2px}.diary-bowel-list small{color:#777a81;font-size:.66rem}
+.diary-meal-feedback-list{display:grid;gap:10px;margin-top:12px}
+.diary-meal-feedback-list article{padding:12px;border:1px solid rgba(255,255,255,.07);border-radius:16px;background:rgba(255,255,255,.02)}
+.diary-meal-feedback-head span{display:grid;gap:3px}.diary-meal-feedback-head small{color:#777a81;font-size:.68rem;line-height:1.35}
+.diary-meal-feedback-list textarea,.diary-notes{width:100%;margin-top:10px;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(0,0,0,.26);color:#fff;padding:10px 11px;font:inherit;resize:vertical}
+.diary-meal-feedback-list textarea:focus,.diary-notes:focus{outline:none;border-color:rgba(255,65,75,.35)}
+
+@media(max-width:720px){
+  .diary-nutrition-grid,.diary-recovery-input-grid,.diary-scale-grid{grid-template-columns:repeat(2,1fr)}
+  .diary-symptom-grid{grid-template-columns:repeat(2,1fr)}
+  .diary-bristol-selector{grid-template-columns:repeat(4,1fr)}
+  .diary-bowel-create{grid-template-columns:1fr 1fr}
+  .diary-bowel-create>.primary{grid-column:1/-1}
+}
+@media(max-width:430px){
+  .diary-nutrition-grid,.diary-recovery-input-grid,.diary-scale-grid,.diary-symptom-grid{grid-template-columns:1fr}
+  .diary-bristol-selector{grid-template-columns:repeat(4,1fr)}
+  .diary-bowel-create{grid-template-columns:1fr}
+  .diary-bowel-create>.primary{grid-column:auto}
+  .diary-recovery-date-nav{grid-template-columns:38px 1fr 38px}
 }

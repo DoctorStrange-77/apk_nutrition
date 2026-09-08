@@ -1,4 +1,4 @@
-type Tab = 'menu' | 'smart' | 'week' | 'progress' | 'profile' | 'timing' | 'foods' | 'saved';
+type Tab = 'menu' | 'diary' | 'smart' | 'week' | 'progress' | 'profile' | 'timing' | 'foods' | 'saved';
 
 type Props = {
   active: Tab;
@@ -10,6 +10,11 @@ const items: Array<{ id: Tab; label: string; icon: JSX.Element }> = [
     id: 'menu',
     label: 'Oggi',
     icon: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4M16 3v4M4 9h16"/><path d="M8 13h3M13 13h3M8 17h3"/></svg>,
+  },
+  {
+    id: 'diary',
+    label: 'Diario',
+    icon: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6z"/><path d="M9 7h6M9 11h6M9 15h4"/><path d="M4 6h2M4 10h2M4 14h2M4 18h2"/></svg>,
   },
   {
     id: 'smart',

@@ -12,6 +12,7 @@ import { RecipeEditorModal } from '@/components/RecipeEditorModal';
 import { SavedMealModal } from '@/components/SavedMealModal';
 import { ChoicePopup } from '@/components/ChoicePopup';
 import { WeeklyPlannerPanel } from '@/components/WeeklyPlannerPanel';
+import { DiaryPanel } from '@/components/DiaryPanel';
 import { SmartIntelligencePanel } from '@/components/SmartIntelligencePanel';
 import { ProgressPanel } from '@/components/ProgressPanel';
 import { ProfilePanel } from '@/components/ProfilePanel';
@@ -66,7 +67,7 @@ import type {
   WeeklyPlanResult,
 } from '@/types/nutrition';
 
-type Tab = 'menu' | 'smart' | 'week' | 'progress' | 'profile' | 'timing' | 'foods' | 'saved';
+type Tab = 'menu' | 'diary' | 'smart' | 'week' | 'progress' | 'profile' | 'timing' | 'foods' | 'saved';
 type MenuMode = 'automatic' | 'manual';
 type DateModalMode = 'navigate' | 'copy-day' | 'copy-meal';
 type SetupProgress = { target: boolean; timing: boolean; generated: boolean };
@@ -1190,6 +1191,17 @@ export function App() {
           })}
         </>}
       </>}
+
+      {tab === 'diary' && <DiaryPanel
+        date={activeDiaryDate}
+        day={currentDiarySnapshot()}
+        trainingContext={activeTrainingContext}
+        onChangeDay={(nextDay) => setDiaryDays((current) => ({ ...current, [activeDiaryDate]: nextDay }))}
+        onPrevious={() => openDiaryDate(shiftDateKey(activeDiaryDate, -1))}
+        onNext={() => openDiaryDate(shiftDateKey(activeDiaryDate, 1))}
+        onToday={() => openDiaryDate(localDateKey())}
+        onPickDate={() => setDateModalMode('navigate')}
+      />}
 
       {tab === 'smart' && <SmartIntelligencePanel
         settings={smartSettings}

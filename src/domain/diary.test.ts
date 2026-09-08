@@ -119,3 +119,37 @@ describe('nutrition + recovery diary compatibility', () => {
     expect(copied.mealFeedback).toBeUndefined();
   });
 });
+
+describe('nutrition recovery diary editing', () => {
+  it('merges recovery fields without dropping previously recorded values', async () => {
+    const { updateDiaryRecovery } = await import('@/domain/diary');
+    const source = makeDiaryDay('2026-09-08', {carbs:200,protein:180,fat:50}, 'rest', meals, null);
+    source.recovery = { sleepHours:7.5, stressLevel:4, bowelMovements:[] };
+    const next = updateDiaryRecovery(source, { energyLevel:8, stressLevel:3 });
+    expect(next.recovery?.sleepHours).toBe(7.5);
+    expect(next.recovery?.stressLevel).toBe(3);
+    expect(next.recovery?.energyLevel).toBe(8);
+    expect(source.recovery?.energyLevel).toBeUndefined();
+  });
+
+  it('upserts feedback for one meal without touching the others', async () => {
+    const { upsertDiaryMealFeedback } = await import('@/domain/diary');
+    const source = makeDiaryDay('2026-09-08', {carbs:200,protein:180,fat:50}, 'rest', meals, null);
+    source.mealFeedback = { m1:{mealId:'m1',hungerBefore:4} };
+    const next = upsertDiaryMealFeedback(source, 'm2', { satietyAfter:8, digestionQuality:'light' });
+    expect(next.mealFeedback?.m1.hungerBefore).toBe(4);
+    expect(next.mealFeedback?.m2).toMatchObject({mealId:'m2',satietyAfter:8,digestionQuality:'light'});
+  });
+
+  it('adds and removes a Bristol event without mutating the source', async () => {
+    const { addDiaryBowelMovement, removeDiaryBowelMovement } = await import('@/domain/diary');
+    const source = makeDiaryDay('2026-09-08', {carbs:200,protein:180,fat:50}, 'rest', meals, null);
+    const added = addDiaryBowelMovement(source, {
+      id:'bm-new', bristolType:4, timestamp:'2026-09-08T09:00:00Z', precedingMealIds:['m1'],
+    });
+    expect(added.recovery?.bowelMovements).toHaveLength(1);
+    expect(source.recovery).toBeUndefined();
+    const removed = removeDiaryBowelMovement(added,'bm-new');
+    expect(removed.recovery?.bowelMovements).toHaveLength(0);
+  });
+});

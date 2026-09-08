@@ -1,4 +1,4 @@
-import type { DiaryDay, GeneratedMenu, MacroTarget, ManualMeal, TimingTemplate } from '@/types/nutrition';
+import type { DailyRecoveryLog, DiaryBowelMovement, DiaryDay, DiaryMealFeedback, GeneratedMenu, MacroTarget, ManualMeal, TimingTemplate } from '@/types/nutrition';
 
 export const localDateKey = (date = new Date()): string => {
   const year = date.getFullYear();
@@ -86,3 +86,59 @@ export const buildCurrentDiaryDay = (
   if (existing?.mealFeedback) next.mealFeedback = structuredClone(existing.mealFeedback);
   return next;
 };
+
+export const updateDiaryRecovery = (
+  day: DiaryDay,
+  patch: Partial<DailyRecoveryLog>,
+): DiaryDay => {
+  const recovery = {
+    ...(day.recovery ? structuredClone(day.recovery) : {}),
+    ...structuredClone(patch),
+  };
+  return {
+    ...day,
+    recovery,
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+export const upsertDiaryMealFeedback = (
+  day: DiaryDay,
+  mealId: string,
+  patch: Omit<Partial<DiaryMealFeedback>, 'mealId'>,
+): DiaryDay => {
+  const existing = day.mealFeedback?.[mealId];
+  return {
+    ...day,
+    mealFeedback: {
+      ...(day.mealFeedback ? structuredClone(day.mealFeedback) : {}),
+      [mealId]: {
+        ...(existing ? structuredClone(existing) : {}),
+        ...structuredClone(patch),
+        mealId,
+      },
+    },
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+export const addDiaryBowelMovement = (
+  day: DiaryDay,
+  movement: DiaryBowelMovement,
+): DiaryDay => {
+  const current = day.recovery?.bowelMovements || [];
+  return updateDiaryRecovery(day, {
+    bowelMovements: [
+      ...current.filter((item) => item.id !== movement.id),
+      structuredClone(movement),
+    ],
+  });
+};
+
+export const removeDiaryBowelMovement = (
+  day: DiaryDay,
+  movementId: string,
+): DiaryDay => updateDiaryRecovery(day, {
+  bowelMovements: (day.recovery?.bowelMovements || [])
+    .filter((item) => item.id !== movementId),
+});
