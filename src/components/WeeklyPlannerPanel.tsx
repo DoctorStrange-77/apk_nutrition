@@ -18,6 +18,7 @@ import { getLocalValue, setLocalValue } from '@/storage/localDatabase';
 import type {
   LocalFood,
   MacroTarget,
+  PantryItem,
   TimingTemplate,
   WeeklyPlanResult,
   WeeklyPlannerConfig,
@@ -32,6 +33,7 @@ type Props = {
   defaultTarget: MacroTarget;
   defaultTimingId: string;
   selectedFoodIds: string[];
+  pantryItems?: PantryItem[];
   onApplyWeek: (result: WeeklyPlanResult) => void;
 };
 
@@ -47,7 +49,7 @@ const weekLabel = (weekStart: string) => {
 };
 
 export function WeeklyPlannerPanel(props: Props) {
-  const { foods, timings, defaultTarget, defaultTimingId, selectedFoodIds, onApplyWeek } = props;
+  const { foods, timings, defaultTarget, defaultTimingId, selectedFoodIds, pantryItems = [], onApplyWeek } = props;
   const initial = useMemo(() => createWeeklyPlannerConfig(localDateKey(), defaultTarget, defaultTimingId), []);
   const [config, setConfig] = useState<WeeklyPlannerConfig>(initial);
   const [result, setResult] = useState<WeeklyPlanResult | null>(null);
@@ -62,7 +64,13 @@ export function WeeklyPlannerPanel(props: Props) {
       const storedConfig = await getLocalValue<WeeklyPlannerConfig | null>(CONFIG_KEY, null);
       const storedResult = await getLocalValue<WeeklyPlanResult | null>(RESULT_KEY, null);
       const resolveTimingId = (id?: string) => { const migrated = migrateBuiltInTimingId(id); return timings.some((timing) => timing.id === migrated) ? migrated : defaultTimingId; };
-      if (storedConfig?.days?.length === 7) setConfig({ ...storedConfig, days: storedConfig.days.map((day) => ({ ...day, timingTemplateId: resolveTimingId(day.timingTemplateId) })) });
+      if (storedConfig?.days?.length === 7) setConfig({
+        ...storedConfig,
+        variety: storedConfig.variety ?? 50,
+        templateReuse: storedConfig.templateReuse ?? true,
+        pantryFirst: storedConfig.pantryFirst ?? false,
+        days: storedConfig.days.map((day) => ({ ...day, timingTemplateId: resolveTimingId(day.timingTemplateId) })),
+      });
       if (storedResult?.days?.length) setResult({ ...storedResult, days: storedResult.days.map((day) => ({ ...day, timingTemplateId: resolveTimingId(day.timingTemplateId), menu: { ...day.menu, timingTemplateId: resolveTimingId(day.menu.timingTemplateId) } })) });
       setLoaded(true);
     })();
@@ -120,10 +128,10 @@ export function WeeklyPlannerPanel(props: Props) {
         timings,
         foods,
         selectedFoodIds: selectedFoodIds.length ? selectedFoodIds : undefined,
-        rotationWindowDays: 2,
+        pantryItems,
       });
       setResult(next);
-      setMessage(`${next.days.length} giorni generati. Rotazione alimenti attiva sulle ultime 48 ore.`);
+      setMessage(`${next.days.length} giorni generati. Varietà ${config.variety ?? 50}/100 · riuso template ${config.templateReuse === false ? 'OFF' : 'ON'}.`);
     } catch (error) {
       setMessage(`Generazione settimana non riuscita: ${String(error)}`);
     } finally {
@@ -162,6 +170,33 @@ export function WeeklyPlannerPanel(props: Props) {
         <button className="secondary" onClick={applyTodayProfileToAll}>Usa profilo di Oggi su tutti</button>
         <span>{selectedFoodIds.length ? `${selectedFoodIds.length} alimenti nel pool` : `${foods.length} alimenti disponibili`}</span>
       </div>
+      <div className="weekly-smart-controls">
+        <label className="weekly-variety-control">
+          <span><small>VARIETÀ</small><strong>{config.variety ?? 50}/100</strong></span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value={config.variety ?? 50}
+            onChange={(event) => { setResult(null); setConfig((current) => ({ ...current, variety:Number(event.target.value), updatedAt:new Date().toISOString() })); }}
+          />
+        </label>
+        <button
+          type="button"
+          className={`smart-toggle ${config.templateReuse === false ? '' : 'active'}`}
+          onClick={() => { setResult(null); setConfig((current) => ({ ...current, templateReuse:current.templateReuse === false, updatedAt:new Date().toISOString() })); }}
+        >
+          Riuso template {config.templateReuse === false ? 'OFF' : 'ON'}
+        </button>
+        <button
+          type="button"
+          className={`smart-toggle ${config.pantryFirst ? 'active' : ''}`}
+          onClick={() => { setResult(null); setConfig((current) => ({ ...current, pantryFirst:!current.pantryFirst, updatedAt:new Date().toISOString() })); }}
+        >
+          Dispensa first {config.pantryFirst ? 'ON' : 'OFF'}
+        </button>
+      </div>
     </section>
 
     <div className="weekly-day-list">
@@ -181,6 +216,30 @@ export function WeeklyPlannerPanel(props: Props) {
           <button className="weekly-timing-selector" disabled={!day.enabled} onClick={() => setTimingDayIndex(index)}>
             <span><small>TIMING</small><strong>{timing?.name || 'Seleziona timing'}</strong></span><b>›</b>
           </button>
+          <div className="weekly-training-controls">
+            <button
+              type="button"
+              className={`smart-toggle ${day.trainingContext?.isTrainingDay ? 'active' : ''}`}
+              disabled={!day.enabled}
+              onClick={() => updateDay(index, {
+                trainingContext: day.trainingContext?.isTrainingDay
+                  ? { isTrainingDay:false, sessionType:'rest' }
+                  : { isTrainingDay:true, startTime:'18:00', durationMinutes:75, sessionType:'other', intensity:'medium' },
+              })}
+            >
+              {day.trainingContext?.isTrainingDay ? 'Training day' : 'Rest day'}
+            </button>
+            {day.trainingContext?.isTrainingDay && <>
+              <label><small>WO</small><input type="time" value={day.trainingContext.startTime || '18:00'} onChange={(event) => updateDay(index, { trainingContext:{ ...day.trainingContext!, startTime:event.target.value } })} /></label>
+              <select value={day.trainingContext.sessionType || 'other'} onChange={(event) => updateDay(index, { trainingContext:{ ...day.trainingContext!, sessionType:event.target.value as NonNullable<typeof day.trainingContext>['sessionType'] } })}>
+                <option value="upper">Upper</option>
+                <option value="lower">Lower</option>
+                <option value="full_body">Full body</option>
+                <option value="cardio">Cardio</option>
+                <option value="other">Altro</option>
+              </select>
+            </>}
+          </div>
         </section>;
       })}
     </div>

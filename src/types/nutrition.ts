@@ -258,11 +258,15 @@ export interface WeeklyDayConfig {
   enabled: boolean;
   target: MacroTarget;
   timingTemplateId: string;
+  trainingContext?: TrainingContext;
 }
 
 export interface WeeklyPlannerConfig {
   weekStart: string;
   days: WeeklyDayConfig[];
+  variety?: number;
+  templateReuse?: boolean;
+  pantryFirst?: boolean;
   updatedAt: string;
 }
 

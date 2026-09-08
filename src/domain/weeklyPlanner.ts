@@ -1,9 +1,12 @@
 import { generateNutritionMenu } from '@/engine/nutritionEngine';
+import { deriveTrainingAwareTiming } from '@/domain/intelligence/trainingAware';
+import { pantryAvailableFoods } from '@/domain/intelligence/pantry';
 import type {
   GeneratedMenu,
   LocalFood,
   MacroTarget,
   ManualMeal,
+  PantryItem,
   ShoppingListItem,
   TimingTemplate,
   WeeklyDayConfig,
@@ -48,6 +51,9 @@ export function createWeeklyPlannerConfig(
       target: { ...target },
       timingTemplateId,
     })),
+    variety: 50,
+    templateReuse: true,
+    pantryFirst: false,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -64,6 +70,7 @@ export const copyDayToAll = (
       enabled: source.enabled,
       target: { ...source.target },
       timingTemplateId: source.timingTemplateId,
+      trainingContext: source.trainingContext ? { ...source.trainingContext } : undefined,
     })),
     updatedAt: new Date().toISOString(),
   };
@@ -126,25 +133,49 @@ type GenerateWeeklyOptions = {
   foods: LocalFood[];
   selectedFoodIds?: string[];
   rotationWindowDays?: number;
+  pantryItems?: PantryItem[];
 };
 
 export async function generateWeeklyPlan(options: GenerateWeeklyOptions): Promise<WeeklyPlanResult> {
   const generatedDays: WeeklyPlanResult['days'] = [];
   const recentFoodSets: string[][] = [];
-  const windowSize = Math.max(0, Math.min(6, options.rotationWindowDays ?? 2));
+  const variety = Math.max(0, Math.min(100, options.config.variety ?? 50));
+  const derivedWindow = Math.round((variety / 100) * 4);
+  const windowSize = Math.max(0, Math.min(6, options.rotationWindowDays ?? derivedWindow));
+  const pantryFoods = options.config.pantryFirst && options.pantryItems?.length
+    ? pantryAvailableFoods(options.pantryItems, options.foods)
+    : [];
+  const pantryIds = new Set(pantryFoods.map((food) => food.id));
+
   for (let index = 0; index < options.config.days.length; index += 1) {
     const day = options.config.days[index];
     if (!day.enabled) continue;
-    const timing = options.timings.find((item) => item.id === day.timingTemplateId);
-    if (!timing) throw new Error(`TIMING_NOT_FOUND:${day.timingTemplateId}`);
-    const avoidFoodIds = [...new Set(recentFoodSets.flat())];
+    const sourceTiming = options.timings.find((item) => item.id === day.timingTemplateId);
+    if (!sourceTiming) throw new Error(`TIMING_NOT_FOUND:${day.timingTemplateId}`);
+    const timing = day.trainingContext
+      ? deriveTrainingAwareTiming(sourceTiming, day.trainingContext)
+      : sourceTiming;
+    const previousFoodIds = recentFoodSets[recentFoodSets.length - 1] || [];
+    const previousSet = new Set(previousFoodIds);
+    const foods = [...options.foods].sort((a, b) => {
+      const pantryDelta = Number(pantryIds.has(b.id)) - Number(pantryIds.has(a.id));
+      if (pantryDelta !== 0) return pantryDelta;
+      if (options.config.templateReuse && variety < 50) {
+        const reuseDelta = Number(previousSet.has(b.id)) - Number(previousSet.has(a.id));
+        if (reuseDelta !== 0) return reuseDelta;
+      }
+      return 0;
+    });
+    const avoidFoodIds = variety >= 35 ? [...new Set(recentFoodSets.flat())] : [];
     const menu = generateNutritionMenu({
       target: day.target,
       timing,
-      foods: options.foods,
+      foods,
       selectedFoodIds: options.selectedFoodIds?.length ? options.selectedFoodIds : undefined,
-      attemptSeed: index * 3,
-      dayKind: timing.dayKind === 'all' ? 'workout' : timing.dayKind,
+      attemptSeed: options.config.templateReuse && variety < 35 ? 0 : index * 3,
+      dayKind: day.trainingContext
+        ? (day.trainingContext.isTrainingDay ? 'workout' : 'off')
+        : timing.dayKind === 'all' ? 'workout' : timing.dayKind,
       avoidFoodIds,
     });
     generatedDays.push({

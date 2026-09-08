@@ -1146,6 +1146,7 @@ export function App() {
         defaultTarget={target}
         defaultTimingId={activeTimingId}
         selectedFoodIds={selectedFoodIds}
+        pantryItems={pantryItems}
         onApplyWeek={applyWeeklyPlanToDiary}
       />}
 

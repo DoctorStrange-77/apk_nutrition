@@ -52,3 +52,49 @@ describe('weekly planner', () => {
     expect(list[0].occurrences).toBe(2);
   });
 });
+
+describe('adaptive weekly intelligence', () => {
+  it('creates backward-compatible Smart planner defaults', () => {
+    const config = createWeeklyPlannerConfig('2026-09-07', target, 'rest-5-balanced');
+    expect(config.variety).toBe(50);
+    expect(config.templateReuse).toBe(true);
+    expect(config.pantryFirst).toBe(false);
+  });
+
+  it('copies the source training context when a day is copied to the week', () => {
+    const config = createWeeklyPlannerConfig('2026-09-07', target, 'rest-5-balanced');
+    config.days[2].trainingContext = {
+      isTrainingDay:true,
+      startTime:'18:00',
+      durationMinutes:75,
+      sessionType:'lower',
+      intensity:'high',
+    };
+    const copied = copyDayToAll(config, 2);
+    expect(copied.days.every((day) => day.trainingContext?.isTrainingDay)).toBe(true);
+    expect(copied.days.every((day) => day.trainingContext?.startTime === '18:00')).toBe(true);
+  });
+
+  it('applies each day training context to generated meal timing', async () => {
+    const { APP_CORE_FOODS } = await import('@/data/appCoreFoods');
+    const { BUILT_IN_TIMINGS } = await import('@/data/builtInTimings');
+    const { generateWeeklyPlan } = await import('./weeklyPlanner');
+    const config = createWeeklyPlannerConfig('2026-09-07', { carbs:200, protein:180, fat:50 }, 'rest-5-balanced');
+    config.days.forEach((day, index) => { day.enabled = index < 2; });
+    config.days[0].trainingContext = {
+      isTrainingDay:true, startTime:'18:00', durationMinutes:90, sessionType:'lower', intensity:'high',
+    };
+    config.days[1].trainingContext = { isTrainingDay:false, sessionType:'rest' };
+
+    const result = await generateWeeklyPlan({
+      config,
+      timings:BUILT_IN_TIMINGS,
+      foods:APP_CORE_FOODS,
+      rotationWindowDays:0,
+    });
+
+    expect(result.days[0].menu.meals.some((meal) => meal.workoutTiming === 'pre')).toBe(true);
+    expect(result.days[0].menu.meals.some((meal) => meal.workoutTiming === 'post')).toBe(true);
+    expect(result.days[1].menu.meals.every((meal) => meal.workoutTiming === 'none')).toBe(true);
+  });
+});
