@@ -374,7 +374,7 @@ export function App() {
 
   useEffect(() => {
     if (!ready) return;
-    const currentDay = buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu);
+    const currentDay = buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu, diaryDays[activeDiaryDate]);
     const persistedDays = { ...diaryDays, [activeDiaryDate]: currentDay };
     const snapshot: NutritionAppSnapshot = {
       customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus,
@@ -387,7 +387,7 @@ export function App() {
   }, [ready, customTimings, customFoods, foodOverrides, deletedFoodIds, savedMenus, savedManualMenus, manualMeals, target, activeTimingId, menuMode, selectedFoodIds, foodPreferencePresetId, customFoodPreferences, activeCustomFoodPreferenceId, diaryDays, activeDiaryDate, menu, favoriteFoodIds, recentFoodIds, savedMealTemplates, recipes, smartSettings, pantryItems, foodPreferenceSignals, dailyTrainingContexts]);
 
   const currentDiarySnapshot = () =>
-    buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu);
+    buildCurrentDiaryDay(activeDiaryDate, target, activeTimingId, manualMeals, menu, diaryDays[activeDiaryDate]);
 
   const openDiaryDate = (nextDate: string) => {
     if (!nextDate || nextDate === activeDiaryDate) { setDateModalMode(null); return; }

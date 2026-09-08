@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { copyDiaryDay, copyMealIntoDay, localDateKey, makeDiaryDay, shiftDateKey } from '@/domain/diary';
+import { buildCurrentDiaryDay, copyDiaryDay, copyMealIntoDay, localDateKey, makeDiaryDay, shiftDateKey } from '@/domain/diary';
 import type { LocalFood, ManualMeal } from '@/types/nutrition';
 
 const food: LocalFood = {
@@ -41,5 +41,81 @@ describe('dated diary', () => {
 
   it('creates local date keys in YYYY-MM-DD format', () => {
     expect(localDateKey(new Date(2026, 7, 24))).toBe('2026-08-24');
+  });
+});
+
+describe('nutrition + recovery diary compatibility', () => {
+  it('preserves recovery and meal feedback when refreshing the current diary day', () => {
+    const existing = makeDiaryDay('2026-09-08', { carbs:200, protein:180, fat:50 }, 'rest-5-balanced', meals, null);
+    existing.recovery = {
+      morningWeightKg:82.4,
+      waterLiters:2.7,
+      sleepHours:7.5,
+      sleepQuality:8,
+      stressLevel:3,
+      energyLevel:8,
+      steps:9200,
+      hungerMorning:3,
+      hungerAfternoon:5,
+      hungerEvening:7,
+      satietyLevel:7,
+      cravingLevel:4,
+      digestionQuality:'normal',
+      bloatingLevel:2,
+      reflux:false,
+      abdominalDiscomfort:false,
+      sleepiness:false,
+      brainFog:false,
+      bowelMovements:[{
+        id:'bm-1',
+        bristolType:4,
+        timestamp:'2026-09-08T08:00:00.000Z',
+        precedingMealIds:['m1'],
+      }],
+      notes:'Giornata regolare',
+    };
+    existing.mealFeedback = {
+      m2:{
+        mealId:'m2',
+        hungerBefore:6,
+        satietyAfter:8,
+        digestionQuality:'light',
+        bloatingLevel:1,
+        reflux:false,
+        sleepiness:false,
+        brainFog:false,
+        notes:'Ottimo',
+      },
+    };
+
+    const refreshed = buildCurrentDiaryDay(
+      '2026-09-08',
+      { carbs:205, protein:180, fat:50 },
+      'rest-5-balanced',
+      meals,
+      null,
+      existing,
+    );
+
+    expect(refreshed.recovery).toEqual(existing.recovery);
+    expect(refreshed.mealFeedback).toEqual(existing.mealFeedback);
+    expect(refreshed.target.carbs).toBe(205);
+  });
+
+  it('does not copy actual recovery or symptoms when copying a food plan to another date', () => {
+    const source = makeDiaryDay('2026-09-08', { carbs:200, protein:180, fat:50 }, 'rest-5-balanced', meals, null);
+    source.recovery = {
+      morningWeightKg:82.4,
+      bowelMovements:[],
+    };
+    source.mealFeedback = {
+      m2:{ mealId:'m2', digestionQuality:'heavy', bloatingLevel:6 },
+    };
+
+    const copied = copyDiaryDay(source, '2026-09-09');
+
+    expect(copied.meals).toEqual(source.meals);
+    expect(copied.recovery).toBeUndefined();
+    expect(copied.mealFeedback).toBeUndefined();
   });
 });

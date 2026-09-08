@@ -46,11 +46,16 @@ export const makeDiaryDay = (
   updatedAt: new Date().toISOString(),
 });
 
-export const copyDiaryDay = (source: DiaryDay, destinationDate: string): DiaryDay => ({
-  ...structuredClone(source),
-  date: destinationDate,
-  updatedAt: new Date().toISOString(),
-});
+export const copyDiaryDay = (source: DiaryDay, destinationDate: string): DiaryDay => {
+  const copied = structuredClone(source);
+  delete copied.recovery;
+  delete copied.mealFeedback;
+  return {
+    ...copied,
+    date: destinationDate,
+    updatedAt: new Date().toISOString(),
+  };
+};
 
 export const copyMealIntoDay = (
   destination: DiaryDay,
@@ -74,4 +79,10 @@ export const buildCurrentDiaryDay = (
   timingTemplateId: string,
   meals: ManualMeal[],
   generatedMenu: GeneratedMenu | null,
-): DiaryDay => makeDiaryDay(date, target, timingTemplateId, meals, generatedMenu);
+  existing?: DiaryDay,
+): DiaryDay => {
+  const next = makeDiaryDay(date, target, timingTemplateId, meals, generatedMenu);
+  if (existing?.recovery) next.recovery = structuredClone(existing.recovery);
+  if (existing?.mealFeedback) next.mealFeedback = structuredClone(existing.mealFeedback);
+  return next;
+};

@@ -220,12 +220,58 @@ export interface ManualMeal {
   items: ManualFoodItem[];
 }
 
+export type DigestionQuality = 'light' | 'normal' | 'heavy';
+
+export interface DiaryBowelMovement {
+  id: string;
+  bristolType: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  timestamp: string;
+  precedingMealIds: string[];
+}
+
+export interface DailyRecoveryLog {
+  morningWeightKg?: number;
+  waterLiters?: number;
+  sleepHours?: number;
+  sleepQuality?: number;
+  stressLevel?: number;
+  energyLevel?: number;
+  steps?: number;
+  hungerMorning?: number;
+  hungerAfternoon?: number;
+  hungerEvening?: number;
+  satietyLevel?: number;
+  cravingLevel?: number;
+  digestionQuality?: DigestionQuality;
+  bloatingLevel?: number;
+  reflux?: boolean;
+  abdominalDiscomfort?: boolean;
+  sleepiness?: boolean;
+  brainFog?: boolean;
+  bowelMovements?: DiaryBowelMovement[];
+  notes?: string;
+}
+
+export interface DiaryMealFeedback {
+  mealId: string;
+  hungerBefore?: number;
+  satietyAfter?: number;
+  digestionQuality?: DigestionQuality;
+  bloatingLevel?: number;
+  reflux?: boolean;
+  sleepiness?: boolean;
+  brainFog?: boolean;
+  notes?: string;
+}
+
 export interface DiaryDay {
   date: string;
   target: MacroTarget;
   timingTemplateId: string;
   meals: ManualMeal[];
   generatedMenu?: GeneratedMenu | null;
+  recovery?: DailyRecoveryLog;
+  mealFeedback?: Record<string, DiaryMealFeedback>;
   updatedAt: string;
 }
 
